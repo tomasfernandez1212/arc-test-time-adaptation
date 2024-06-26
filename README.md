@@ -14,7 +14,9 @@ My goal is to create a transformer encoder-decoder capable of natively perceivin
 
 Existing transformers struggle with ARC tasks due to inadequate grid tokenization. Current tokenizers break grids into arbitrary characters, which is inefficient.
 
-![Example issues with existing tokenizers](media/Example issues with existing tokenizers.png)
+<div align="center">
+        <img src="media/Example%20issues%20with%20existing%20tokenizers.png" alt="Example issues with existing tokenizers" width="400"/>
+</div>
 
 I will develop a simpler tokenizer and embedding space tailored for the integer grids. This approach will avoid the complexity of Vision Transformers' patching and tokenization, focusing instead on a custom solution suitable for the simplicity of ARC grids.
 #### Adaptation to New Tasks:
