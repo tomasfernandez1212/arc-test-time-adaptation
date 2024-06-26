@@ -19,10 +19,24 @@ Existing transformers struggle with ARC tasks due to inadequate grid tokenizatio
 </div>
 
 I will develop a simpler tokenizer and embedding space tailored for the integer grids. This approach will avoid the complexity of Vision Transformers' patching and tokenization, focusing instead on a custom solution suitable for the simplicity of ARC grids.
-#### Adaptation to New Tasks:
 
-To enable the model to adapt to new tasks, I will integrate additional layers or a few trainable parameters that can be fine-tuned during test time.
-By employing a technique known as grokking, which involves fine-tuning on limited new examples, the model will exhibit double-descent behavior, smoothing out learned representations to generalize effectively to new inputs.
+#### Encoder-Decoder:
+Unlike modern decoder-only LLMs, I will use a encoder-decoder architecture similar to those used translate problems. 
+
+For example, given a new task with 2 "pairs" of "input" and "output" for training and 1 unpaired input for testing, I will pass all 3 inputs to the encoder and the 2 outputs to the decoder. The decoder should then proceed to generate the output for the test. 
+
+Learning a mapping from input to output grids is similar to translation, hence the use of encoder-decoder architecture. 
+
+#### Positional Encoding:
+
+Given that within grids the relative position of values matters as it does in language modeling, I will use some sort of positional encoding. There needs to be encoding of positions within a grid as well as encoding of positions between grids. The latter is such that the model can understand that input grid i corresponds to output grid i. 
+
+#### Adaptation to New Tasks:
+Unlike in general translation problems, we don't have abundant data to learn the mappings between languages (input-output pairs). Rather, we must learn to translate to new "languages" (tasks) during inference. 
+
+To enable the model to adapt to new tasks, I will add additional layers with few trainable parameters that can be fine-tuned during test time.
+
+By employing a technique known as grokking, which involves training a relatively large number of parameters relative to the training data, the model may exhibit a double-descent behavior, smoothing out learned representations to generalize effectively to new inputs.
 
 ## This repository 
 
