@@ -42,7 +42,13 @@ By employing a technique known as grokking, which involves training a relatively
 
 ##### Pretraining:
 
-I plan to use _generative self-supervised_ and _contrastive self-supervised_ training for pretraining. Generative Pretraining will use masking of input or output and the goal is to reconstruct the pair. This will enable to network to learn internal representations to understand the data, but will not help to solve the mapping of input to output. I plan to implement contrastive self-supervision in two ways. The first is by leveraging the fact that an input and output of a pair should be more similar to each other than to any other pair. The other way is by leveraging the fact that the _mapping_ from input to output of examples in the same task should be more similar than _mappings_ of input to outputs of other tasks. This second contrastive approach might be more challenging to implement, but might enable to network to learn about mappings from input to output. 
+I plan to use both _generative_ and _contrastive_ self-supervised training methods for pretraining. 
+
+_Generative_ Pretraining will use masking of input or output and the goal is to reconstruct the pair. This will enable to network to learn internal representations to understand the data, but will not help to solve the mapping of input to output. 
+
+_Contrastive_ Pretraining could be done in two distinct ways:
+1. The first is by leveraging the fact that the input and output of a pair should be more similar than to those of other pairs.
+2. The second way is by leveraging the fact that the _mapping_ from input to output across all pairs in the same task should be more similar than to the _mappings_ of input to outputs of other tasks. This second contrastive approach might be more challenging to implement, but might enable to network to learn about mappings from input to output. 
 
 ##### Supervised Training:
 
