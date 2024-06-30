@@ -52,7 +52,7 @@ _Contrastive_ Pretraining could be done in two distinct ways:
 
 ##### Supervised Training:
 
-TBD 
+TBD - Perhaps with the few examples provided per task during test time, with data augmentation and regularization techniques for better generalization. 
 
 ##### Alignment Training:
 
