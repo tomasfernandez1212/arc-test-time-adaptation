@@ -38,6 +38,20 @@ To enable the model to adapt to new tasks, I will add additional layers with few
 
 By employing a technique known as grokking, which involves training a relatively large number of parameters relative to the training data, the model may exhibit a double-descent behavior, smoothing out learned representations to generalize effectively to new inputs.
 
+#### Training Stages:
+
+##### Pretraining:
+
+I plan to use _generative self-supervised_ and _contrastive self-supervised_ training for pretraining. Generative Pretraining will use masking of input or output and the goal is to reconstruct the pair. This will enable to network to learn internal representations to understand the data, but will not help to solve the mapping of input to output. I plan to implement contrastive self-supervision in two ways. The first is by leveraging the fact that an input and output of a pair should be more similar to each other than to any other pair. The other way is by leveraging the fact that the _mapping_ from input to output of examples in the same task should be more similar than _mappings_ of input to outputs of other tasks. This second contrastive approach might be more challenging to implement, but might enable to network to learn about mappings from input to output. 
+
+##### Supervised Training:
+
+TBD 
+
+##### Alignment Training:
+
+TBD - Perhaps reward model, with actor-critic. 
+
 ## This repository 
 
 This repository will document my journey and progress towards developing a solution for the ARC Challenge. Stay tuned for updates as I implement and refine my approach.
