@@ -52,7 +52,7 @@ _Contrastive_ Pretraining involves learning from unlabeled data by leveraging th
 
 ##### Supervised Training:
 
-TBD - Perhaps with the few examples provided per task during test time, with data augmentation and regularization techniques for better generalization. 
+Using the labeled training data, we could employ supervised training. This could also be applied during test time on the few examples provided at test time. As mentioned earlier, grokking and overparametrization may help, as well as data augmentation and regularization techniques for better generalization. 
 
 ##### Alignment Training:
 
