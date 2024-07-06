@@ -56,7 +56,7 @@ Using the labeled training data, we could employ supervised training. This could
 
 ##### Alignment Training:
 
-TBD - Perhaps reward model, with actor-critic. 
+Once pre-training is complete and supervised training data is exhausted, I might employ alignment techniques such as training a reward model which could rate solutions or perhaps use an actor-critic approach.  
 
 ## This repository 
 
