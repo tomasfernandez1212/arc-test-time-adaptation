@@ -44,9 +44,9 @@ By employing a technique known as grokking, which involves training for a relati
 
 I plan to use both _generative_ and _contrastive_ self-supervised training methods for pretraining. 
 
-_Generative_ Pretraining will use masking of input or output and the goal is to reconstruct the pair. This will enable to network to learn internal representations to understand the data, but will not help to solve the mapping of input to output. 
+_Generative_ Pretraining involves recreating a patched portion of the original data. By patching the input or outputs of identical grids, the network will be incentivised to learn internal representations to understand the data. This could be done early in the training process for the network to get a basic grasp of the data. Then, by patching the input or outputs of non-identical pairs, the network will be incentivised to learn how to map from input to outputs logically. To enable faster learning, a progressive patching strategy could be used such that patches are small initially and progressively get larger as the network becomes more capable. 
 
-_Contrastive_ Pretraining could be done in two distinct ways:
+_Contrastive_ Pretraining involves learning from unlabeled data by leveraging the fact that certain data is inherently more similar to other data and vice versa. Concretely, this could be done in two distinct ways:
 1. The first is by leveraging the fact that the input and output of a pair should be more similar than to those of other pairs.
 2. The second way is by leveraging the fact that the _mapping_ from input to output across all pairs in the same task should be more similar than to the _mappings_ of input to outputs of other tasks. This second contrastive approach might be more challenging to implement, but might enable to network to learn about mappings from input to output. 
 
