@@ -42,4 +42,5 @@ print(f"Average Context Size: {sum(task_context_sizes)/len(task_context_sizes)}"
 print(f"Max Context Size: {max(task_context_sizes)}") # 9000
 print(f"Min Context Size: {min(task_context_sizes)}") # 54
 threshold = 2**12
-print(f"Percent Below {threshold}: {(sum([1 for x in task_context_sizes if x < threshold])/len(task_context_sizes))*100}%") # 54
+print(f"Percent Below {threshold}: {(sum([1 for x in task_context_sizes if x < threshold])/len(task_context_sizes))*100}%") 
+print(f"Task {task_context_sizes.index(max(task_context_sizes))} has the largest context of {max(task_context_sizes)}") 
