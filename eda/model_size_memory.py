@@ -3,11 +3,11 @@ import torch
 
 src_vocab_size = 10 # Number of Colors 
 tgt_vocab_size = 10 # Number of Colors 
-d_model = 8 # Embeddings Dimension - Should be divisible by 2 for positional encoding. Using LLMs as a point of comparison, this should be less than number of colors/tokens.
-num_heads = 4 # Number of attention heads. d_model must be divisible by num_heads. 
+d_model = 6 # Embeddings Dimension - Should be divisible by 2 for positional encoding. Using LLMs as a point of comparison, this should be less than number of colors/tokens.
+num_heads = 3 # Number of attention heads. d_model must be divisible by num_heads. 
 num_layers = 6 # Number of encoder/decoder layers. 
 d_ff = 4*d_model # Feed Forward Hidden Layer Dimensionality 
-max_seq_length = 2000 # 30*30*2*10 # Max Grid Size is 30x30 and there can be up to 10 input output pairs per task. 
+max_seq_length = 2**12 # Max Grid Size is 30x30. There can be up to 10 input output pairs per task. However, a context window that size takes up a lot of memory. 4096 covers 97% of tasks.
 dropout = 0.1 # Dropout probability
 batch_size = 4 # Batch size
 

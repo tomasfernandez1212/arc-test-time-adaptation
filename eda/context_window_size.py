@@ -41,3 +41,5 @@ for i in range(len(data)):
 print(f"Average Context Size: {sum(task_context_sizes)/len(task_context_sizes)}") # 1108
 print(f"Max Context Size: {max(task_context_sizes)}") # 9000
 print(f"Min Context Size: {min(task_context_sizes)}") # 54
+threshold = 2**12
+print(f"Percent Below {threshold}: {(sum([1 for x in task_context_sizes if x < threshold])/len(task_context_sizes))*100}%") # 54
