@@ -68,20 +68,11 @@ class PositionWiseFeedForward(nn.Module):
         return self.fc2(self.relu(self.fc1(x)))
     
 class PositionalEncoding(nn.Module):
-    def __init__(self, d_model, max_pixels_in_grid, max_grids_in_pair, max_pairs_in_sample):
+    def __init__(self, d_model, max_tokens_per_sample):
         super(PositionalEncoding, self).__init__()
-
-        # Positional encoding for Pixels in Grid
-        pixels_pe = self._generate_positional_encoding(max_pixels_in_grid, d_model)
-        self.register_buffer('pixels_pe', pixels_pe)
-
-        # Positional encoding for Grids in Pair
-        grids_pe = self._generate_positional_encoding(max_grids_in_pair, d_model)
-        self.register_buffer('grids_pe', grids_pe)
-
-        # Positional encoding for Pairs in Sample
-        pairs_pe = self._generate_positional_encoding(max_pairs_in_sample, d_model)
-        self.register_buffer('pairs_pe', pairs_pe)
+        # Positional encoding per sample
+        pe = self._generate_positional_encoding(max_tokens_per_sample, d_model)
+        self.register_buffer('pe', pe)
 
     def _generate_positional_encoding(self, length, d_model):
         pe = torch.zeros(length, d_model)
@@ -93,33 +84,17 @@ class PositionalEncoding(nn.Module):
         
         return pe.unsqueeze(0)  # Shape: (1, length, d_model)
 
-    def forward(self, x, grid_starts, grid_lengths, pair_starts, pair_lengths):
+    def forward(self, x):
         device = x.device
         batch_size, seq_length, d_model = x.size()
         
-        # Positional encoding for Pixels in Grid
-        pixels_pe = torch.zeros_like(x).to(device)
-        for i, (start, length) in enumerate(zip(grid_starts, grid_lengths)):
-            end = start + length
-            pixels_pe[:, start:end, :] = self.pixels_pe[:, :length, :].to(device)
-
-        # Positional encoding for Grids in Pair
-        grids_pe = torch.zeros_like(x).to(device)
-        for i, (start, length) in enumerate(zip(grid_starts, grid_lengths)):
-            end = start + length
-            grid_in_pair_idx = i % 2 
-            grids_pe[:, start:end, :] = self.grids_pe[:, grid_in_pair_idx, :].to(device)
+        # Ensure pe is on the same device as x
+        pe = self.pe[:, :seq_length, :].to(device)
         
-        # Positional encoding for Pairs in Sample
-        pairs_pe = torch.zeros_like(x).to(device)
-        for i, (start, length) in enumerate(zip(pair_starts, pair_lengths)):
-            end = start + length
-            pairs_pe[:, start:end, :] = self.pairs_pe[:, i, :].to(device)
+        # Add the positional encoding to each batch in the input tensor
+        x = x + pe
         
-        # Combine all positional encodings
-        combined_pe = pixels_pe + grids_pe + pairs_pe
-        
-        return x + combined_pe
+        return x
     
 class EncoderLayer(nn.Module):
     def __init__(self, d_model, num_heads, d_ff, dropout):
@@ -158,11 +133,11 @@ class DecoderLayer(nn.Module):
         return x
     
 class Transformer(nn.Module):
-    def __init__(self, src_possible_tokens, tgt_possible_tokens, max_pixels_in_grid, max_grids_in_pair, max_pairs_in_sample, d_model, num_heads, num_layers, d_ff, dropout):
+    def __init__(self, src_possible_tokens, tgt_possible_tokens, max_tokens_per_sample, d_model, num_heads, num_layers, d_ff, dropout):
         super(Transformer, self).__init__()
         self.encoder_embedding = nn.Embedding(src_possible_tokens, d_model)
         self.decoder_embedding = nn.Embedding(tgt_possible_tokens, d_model)
-        self.positional_encoding = PositionalEncoding(d_model, max_pixels_in_grid, max_grids_in_pair, max_pairs_in_sample)
+        self.positional_encoding = PositionalEncoding(d_model, max_tokens_per_sample)
 
         self.encoder_layers = nn.ModuleList([EncoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)])
         self.decoder_layers = nn.ModuleList([DecoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)])
@@ -179,10 +154,10 @@ class Transformer(nn.Module):
         tgt_mask = tgt_mask & nopeak_mask
         return src_mask, tgt_mask
 
-    def forward(self, src, tgt, grid_starts, grid_lengths, pair_starts, pair_lengths):
+    def forward(self, src, tgt):
         src_mask, tgt_mask = self.generate_mask(src, tgt)
-        src_embedded = self.dropout(self.positional_encoding(self.encoder_embedding(src), grid_starts, grid_lengths, pair_starts, pair_lengths))
-        tgt_embedded = self.dropout(self.positional_encoding(self.decoder_embedding(tgt), grid_starts, grid_lengths, pair_starts, pair_lengths))
+        src_embedded = self.dropout(self.positional_encoding(self.encoder_embedding(src)))
+        tgt_embedded = self.dropout(self.positional_encoding(self.decoder_embedding(tgt)))
 
         enc_output = src_embedded
         for enc_layer in self.encoder_layers:
