@@ -12,8 +12,8 @@ This script is used to estimate the memory usage of the model. It is not used in
 from src.model.core import Transformer
 import torch
 
-src_vocab_size = 10 # Number of Colors 
-tgt_vocab_size = 10 # Number of Colors 
+src_possible_tokens = 10 # Number of Colors 
+tgt_possible_tokens = 10 # Number of Colors 
 d_model = 6 # Embeddings Dimension - Should be divisible by 2 for positional encoding. Using LLMs as a point of comparison, this should be less than number of colors/tokens.
 num_heads = 3 # Number of attention heads. d_model must be divisible by num_heads. 
 num_layers = 6 # Number of encoder/decoder layers. 
@@ -34,12 +34,12 @@ pair_starts = torch.tensor([0, 8, 16]).to(device)
 pair_lengths = torch.tensor([8, 8, 8]).to(device)
 
 # Initialize Model
-transformer = Transformer(src_vocab_size, tgt_vocab_size, max_pixels_in_grid, max_grids_in_pair, max_pairs_in_sample, d_model, num_heads, num_layers, d_ff, dropout)
+transformer = Transformer(src_possible_tokens, tgt_possible_tokens, max_pixels_in_grid, max_grids_in_pair, max_pairs_in_sample, d_model, num_heads, num_layers, d_ff, dropout)
 transformer.to(device)
 
 # Generate Fake Data 
-src_data = torch.randint(1, src_vocab_size, (batch_size, max_seq_length)).to(device)  # (batch_size, seq_length)
-tgt_data = torch.randint(1, tgt_vocab_size, (batch_size, max_seq_length)).to(device)  # (batch_size, seq_length)
+src_data = torch.randint(1, src_possible_tokens, (batch_size, max_seq_length)).to(device)  # (batch_size, seq_length)
+tgt_data = torch.randint(1, tgt_possible_tokens, (batch_size, max_seq_length)).to(device)  # (batch_size, seq_length)
 
 # Run inference
 transformer.eval()

@@ -158,16 +158,16 @@ class DecoderLayer(nn.Module):
         return x
     
 class Transformer(nn.Module):
-    def __init__(self, src_vocab_size, tgt_vocab_size, max_pixels_in_grid, max_grids_in_pair, max_pairs_in_sample, d_model, num_heads, num_layers, d_ff, dropout):
+    def __init__(self, src_possible_tokens, tgt_possible_tokens, max_pixels_in_grid, max_grids_in_pair, max_pairs_in_sample, d_model, num_heads, num_layers, d_ff, dropout):
         super(Transformer, self).__init__()
-        self.encoder_embedding = nn.Embedding(src_vocab_size, d_model)
-        self.decoder_embedding = nn.Embedding(tgt_vocab_size, d_model)
+        self.encoder_embedding = nn.Embedding(src_possible_tokens, d_model)
+        self.decoder_embedding = nn.Embedding(tgt_possible_tokens, d_model)
         self.positional_encoding = PositionalEncoding(d_model, max_pixels_in_grid, max_grids_in_pair, max_pairs_in_sample)
 
         self.encoder_layers = nn.ModuleList([EncoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)])
         self.decoder_layers = nn.ModuleList([DecoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)])
 
-        self.fc = nn.Linear(d_model, tgt_vocab_size)
+        self.fc = nn.Linear(d_model, tgt_possible_tokens)
         self.dropout = nn.Dropout(dropout)
 
     def generate_mask(self, src, tgt):
