@@ -24,10 +24,9 @@ batch_size = 4 # Batch size
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Define Example Data Dimensions - 2x2 grids, 2 input pairs, 1 output to solve: 4x2x2+4 = 20
-max_pixels_in_grid = 2*2
+max_pixels_in_grid = 30*30
 max_grids_in_pair = 2
-max_pairs_in_sample = 3
-max_seq_length = max_pixels_in_grid*max_grids_in_pair*max_pairs_in_sample
+max_pairs_in_sample = 10
 grid_starts = torch.tensor([0, 4, 8, 12, 16, 20]).to(device)
 grid_lengths = torch.tensor([4, 4, 4, 4, 4, 4]).to(device)
 pair_starts = torch.tensor([0, 8, 16]).to(device)
