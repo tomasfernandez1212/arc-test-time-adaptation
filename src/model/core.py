@@ -68,58 +68,51 @@ class PositionWiseFeedForward(nn.Module):
         return self.fc2(self.relu(self.fc1(x)))
     
 class PositionalEncoding(nn.Module):
-    def __init__(self, d_model, max_pixels_in_grid, max_grids_in_pair, max_pairs_in_sample):
+    def __init__(self, d_model, max_pairs_in_sample, max_grids_in_pair, max_pixels_in_row, max_pixels_in_col):
         super(PositionalEncoding, self).__init__()
 
         # Positional encoding for Pixels in Grid
-        pixels_pe = self._generate_positional_encoding(max_pixels_in_grid, d_model)
-        self.register_buffer('pixels_pe', pixels_pe)
+        pe = self._generate_4d_positional_encoding(max_pairs_in_sample, max_grids_in_pair, max_pixels_in_row, max_pixels_in_col, d_model)
+        self.register_buffer('pe', pe)
 
-        # Positional encoding for Grids in Pair
-        grids_pe = self._generate_positional_encoding(max_grids_in_pair, d_model)
-        self.register_buffer('grids_pe', grids_pe)
+    def _generate_4d_positional_encoding(self, max_pairs_in_sample, max_grids_in_pair, max_pixels_in_row, max_pixels_in_col, d_model):
 
-        # Positional encoding for Pairs in Sample
-        pairs_pe = self._generate_positional_encoding(max_pairs_in_sample, d_model)
-        self.register_buffer('pairs_pe', pairs_pe)
+        if d_model%4!=0:
+            raise ValueError("d_model must be divisible by 4")
+        if d_model<8: 
+            raise ValueError("d_model must be at least 8")
+        
+        pe = torch.zeros(max_pairs_in_sample, max_grids_in_pair, max_pixels_in_row, max_pixels_in_col, d_model)
+        
+        # Positional encoding for groups
+        group_position = torch.arange(0, max_pairs_in_sample, dtype=torch.float).unsqueeze(1)
+        div_term_group = torch.exp(torch.arange(0, d_model // 4, 2).float() * -(math.log(10000.0) / (d_model // 4)))
+        pe[:, :, :, :, 0::8] = torch.sin(group_position * div_term_group).unsqueeze(1).unsqueeze(1).unsqueeze(1)
+        pe[:, :, :, :, 1::8] = torch.cos(group_position * div_term_group).unsqueeze(1).unsqueeze(1).unsqueeze(1)
+        
+        # Positional encoding for grids within groups
+        grid_position = torch.arange(0, max_grids_in_pair, dtype=torch.float).unsqueeze(1)
+        div_term_grid = torch.exp(torch.arange(0, d_model // 4, 2).float() * -(math.log(10000.0) / (d_model // 4)))
+        pe[:, :, :, :, 2::8] = torch.sin(grid_position * div_term_grid).unsqueeze(0).unsqueeze(2).unsqueeze(2)
+        pe[:, :, :, :, 3::8] = torch.cos(grid_position * div_term_grid).unsqueeze(0).unsqueeze(2).unsqueeze(2)
+        
+        # Positional encoding for rows within grids
+        row_position = torch.arange(0, max_pixels_in_row, dtype=torch.float).unsqueeze(1)
+        div_term_row = torch.exp(torch.arange(0, d_model // 4, 2).float() * -(math.log(10000.0) / (d_model // 4)))
+        pe[:, :, :, :, 4::8] = torch.sin(row_position * div_term_row).unsqueeze(0).unsqueeze(0).unsqueeze(3)
+        pe[:, :, :, :, 5::8] = torch.cos(row_position * div_term_row).unsqueeze(0).unsqueeze(0).unsqueeze(3)
+        
+        # Positional encoding for columns within grids
+        col_position = torch.arange(0, max_pixels_in_col, dtype=torch.float).unsqueeze(1)
+        div_term_col = torch.exp(torch.arange(0, d_model // 4, 2).float() * -(math.log(10000.0) / (d_model // 4)))
+        pe[:, :, :, :, 6::8] = torch.sin(col_position * div_term_col).unsqueeze(0).unsqueeze(0).unsqueeze(2)
+        pe[:, :, :, :, 7::8] = torch.cos(col_position * div_term_col).unsqueeze(0).unsqueeze(0).unsqueeze(2)
+        
+        return pe.unsqueeze(0)
 
-    def _generate_positional_encoding(self, length, d_model):
-        pe = torch.zeros(length, d_model)
-        position = torch.arange(0, length, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2).float() * -(math.log(10000.0) / d_model))
+    def forward(self, x, 
         
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
         
-        return pe.unsqueeze(0)  # Shape: (1, length, d_model)
-
-    def forward(self, x, grid_starts, grid_lengths, pair_starts, pair_lengths):
-        device = x.device
-        batch_size, seq_length, d_model = x.size()
-        
-        # Positional encoding for Pixels in Grid
-        pixels_pe = torch.zeros_like(x).to(device)
-        for i, (start, length) in enumerate(zip(grid_starts, grid_lengths)):
-            end = start + length
-            pixels_pe[:, start:end, :] = self.pixels_pe[:, :length, :].to(device)
-
-        # Positional encoding for Grids in Pair
-        grids_pe = torch.zeros_like(x).to(device)
-        for i, (start, length) in enumerate(zip(grid_starts, grid_lengths)):
-            end = start + length
-            grid_in_pair_idx = i % 2 
-            grids_pe[:, start:end, :] = self.grids_pe[:, grid_in_pair_idx, :].to(device)
-        
-        # Positional encoding for Pairs in Sample
-        pairs_pe = torch.zeros_like(x).to(device)
-        for i, (start, length) in enumerate(zip(pair_starts, pair_lengths)):
-            end = start + length
-            pairs_pe[:, start:end, :] = self.pairs_pe[:, i, :].to(device)
-        
-        # Combine all positional encodings
-        combined_pe = pixels_pe + grids_pe + pairs_pe
-        
-        return x + combined_pe
     
 class EncoderLayer(nn.Module):
     def __init__(self, d_model, num_heads, d_ff, dropout):
@@ -158,11 +151,11 @@ class DecoderLayer(nn.Module):
         return x
     
 class Transformer(nn.Module):
-    def __init__(self, src_possible_tokens, tgt_possible_tokens, max_pixels_in_grid, max_grids_in_pair, max_pairs_in_sample, d_model, num_heads, num_layers, d_ff, dropout):
+    def __init__(self, src_possible_tokens, tgt_possible_tokens, max_pairs_in_sample, max_grids_in_pair, max_pixels_in_row, max_pixels_in_col, d_model, num_heads, num_layers, d_ff, dropout):
         super(Transformer, self).__init__()
         self.encoder_embedding = nn.Embedding(src_possible_tokens, d_model)
         self.decoder_embedding = nn.Embedding(tgt_possible_tokens, d_model)
-        self.positional_encoding = PositionalEncoding(d_model, max_pixels_in_grid, max_grids_in_pair, max_pairs_in_sample)
+        self.positional_encoding = PositionalEncoding(d_model, max_pairs_in_sample, max_grids_in_pair, max_pixels_in_row, max_pixels_in_col)
 
         self.encoder_layers = nn.ModuleList([EncoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)])
         self.decoder_layers = nn.ModuleList([DecoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)])
