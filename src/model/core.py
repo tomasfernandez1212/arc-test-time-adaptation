@@ -68,20 +68,20 @@ class PositionWiseFeedForward(nn.Module):
         return self.fc2(self.relu(self.fc1(x)))
     
 class PositionalEncoding(nn.Module):
-    def __init__(self, d_model, max_num_pixels, max_grid_size, max_num_pairs):
+    def __init__(self, d_model, max_pixels_in_grid, max_grids_in_pair, max_pairs_in_sample):
         super(PositionalEncoding, self).__init__()
-        
-        # Positional encoding for Pixels
-        self.pixel_pe = self._generate_positional_encoding(max_num_pixels, d_model)
-        self.register_buffer('pixel_pe', self.pixel_pe)
 
-        # Positional encoding for Grids
-        self.grids_pe = self._generate_positional_encoding(max_grid_size, d_model)
-        self.register_buffer('grids_pe', self.grids_pe)
+        # Positional encoding for Pixels in Grid
+        pixels_pe = self._generate_positional_encoding(max_pixels_in_grid, d_model)
+        self.register_buffer('pixels_pe', pixels_pe)
 
-        # Positional encoding for Pairs
-        self.pairs_pe = self._generate_positional_encoding(max_num_pairs, d_model)
-        self.register_buffer('pairs_pe', self.pairs_pe)
+        # Positional encoding for Grids in Pair
+        grids_pe = self._generate_positional_encoding(max_grids_in_pair, d_model)
+        self.register_buffer('grids_pe', grids_pe)
+
+        # Positional encoding for Pairs in Sample
+        pairs_pe = self._generate_positional_encoding(max_pairs_in_sample, d_model)
+        self.register_buffer('pairs_pe', pairs_pe)
 
     def _generate_positional_encoding(self, length, d_model):
         pe = torch.zeros(length, d_model)
@@ -97,25 +97,27 @@ class PositionalEncoding(nn.Module):
         device = x.device
         batch_size, seq_length, d_model = x.size()
         
-        # Token positional encoding
-        pixel_pe = self.pixel_pe[:, :seq_length].to(device)
-        
-        # Grid positional encoding
+        # Positional encoding for Pixels in Grid
+        pixels_pe = torch.zeros_like(x).to(device)
+        for i, (start, length) in enumerate(zip(grid_starts, grid_lengths)):
+            end = start + length
+            pixels_pe[:, start:end, :] = self.pixels_pe[:, :length, :].to(device)
+
+        # Positional encoding for Grids in Pair
         grids_pe = torch.zeros_like(x).to(device)
-        for start, length in zip(grid_starts, grid_lengths):
+        for i, (start, length) in enumerate(zip(grid_starts, grid_lengths)):
             end = start + length
-            if end <= seq_length:  # Ensure we do not go out of sequence length bounds
-                grids_pe[:, start:end, :] = self.grids_pe[:, :length, :].to(device)
+            grid_in_pair_idx = i % 2 
+            grids_pe[:, start:end, :] = self.grids_pe[:, grid_in_pair_idx, :].to(device)
         
-        # Pairs positional encoding
+        # Positional encoding for Pairs in Sample
         pairs_pe = torch.zeros_like(x).to(device)
-        for start, length in zip(pair_starts, pair_lengths):
+        for i, (start, length) in enumerate(zip(pair_starts, pair_lengths)):
             end = start + length
-            if end <= seq_length:  # Ensure we do not go out of sequence length bounds
-                pairs_pe[:, start:end, :] = self.pairs_pe[:, :length, :].to(device)
+            pairs_pe[:, start:end, :] = self.pairs_pe[:, i, :].to(device)
         
         # Combine all positional encodings
-        combined_pe = pixel_pe + grids_pe + pairs_pe
+        combined_pe = pixels_pe + grids_pe + pairs_pe
         
         return x + combined_pe
     
@@ -156,11 +158,11 @@ class DecoderLayer(nn.Module):
         return x
     
 class Transformer(nn.Module):
-    def __init__(self, src_vocab_size, tgt_vocab_size, d_model, num_heads, num_layers, d_ff, max_pixels, max_grid_size, max_num_pairs, dropout):
+    def __init__(self, src_vocab_size, tgt_vocab_size, max_pixels_in_grid, max_grids_in_pair, max_pairs_in_sample, d_model, num_heads, num_layers, d_ff, dropout):
         super(Transformer, self).__init__()
         self.encoder_embedding = nn.Embedding(src_vocab_size, d_model)
         self.decoder_embedding = nn.Embedding(tgt_vocab_size, d_model)
-        self.positional_encoding = PositionalEncoding(d_model, max_pixels, max_grid_size, max_num_pairs)
+        self.positional_encoding = PositionalEncoding(d_model, max_pixels_in_grid, max_grids_in_pair, max_pairs_in_sample)
 
         self.encoder_layers = nn.ModuleList([EncoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)])
         self.decoder_layers = nn.ModuleList([DecoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)])
@@ -177,10 +179,10 @@ class Transformer(nn.Module):
         tgt_mask = tgt_mask & nopeak_mask
         return src_mask, tgt_mask
 
-    def forward(self, src, tgt):
+    def forward(self, src, tgt, grid_starts, grid_lengths, pair_starts, pair_lengths):
         src_mask, tgt_mask = self.generate_mask(src, tgt)
-        src_embedded = self.dropout(self.positional_encoding(self.encoder_embedding(src)))
-        tgt_embedded = self.dropout(self.positional_encoding(self.decoder_embedding(tgt)))
+        src_embedded = self.dropout(self.positional_encoding(self.encoder_embedding(src), grid_starts, grid_lengths, pair_starts, pair_lengths))
+        tgt_embedded = self.dropout(self.positional_encoding(self.decoder_embedding(tgt), grid_starts, grid_lengths, pair_starts, pair_lengths))
 
         enc_output = src_embedded
         for enc_layer in self.encoder_layers:
