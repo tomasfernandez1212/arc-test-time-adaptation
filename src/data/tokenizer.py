@@ -1,6 +1,7 @@
 from src.data.schema import *
 from enum import Enum
 from typing import Tuple, List
+from collections import deque
 
 class Token(Enum):
     PAD = "<pad>"
@@ -47,10 +48,10 @@ class TaskEncoder:
     def encode_task(self, task: Task) -> Tuple[List[int], List[int]]:
         encoder_sequence = self.encode_sequence(task, encoder=True)
         decoder_sequence = self.encode_sequence(task, encoder=False)
-        return encoder_sequence, decoder_sequence
+        return list(encoder_sequence), list(decoder_sequence)
 
-    def encode_sequence(self, task: Task, encoder: bool) -> List[int]:
-        encodings = [Encoding.START_OF_SEQUENCE.value]
+    def encode_sequence(self, task: Task, encoder: bool) -> deque:
+        encodings = deque([Encoding.START_OF_SEQUENCE.value])
 
         if encoder:
             # Tokenize All Input Grids in Train and Test
@@ -68,18 +69,17 @@ class TaskEncoder:
         encodings.append(Encoding.END_OF_SEQUENCE.value)
         return encodings
             
-    def encode_grid(self, grid: Grid) -> List[int]:
-        encodings = [Encoding.START_OF_GRID.value]
+    def encode_grid(self, grid: Grid) -> deque:
+        encodings = deque([Encoding.START_OF_GRID.value])
         for row in grid:
             encodings.extend(self.encode_row(row))
         encodings.append(Encoding.END_OF_GRID.value)
         return encodings
 
-    def encode_row(self, row: Row) -> List[int]:
-        encodings = [Encoding.START_OF_ROW.value]
+    def encode_row(self, row: Row) -> deque:
+        encodings = deque([Encoding.START_OF_ROW.value])
         for cell in row:
             encodings.append(cell)
         encodings.append(Encoding.END_OF_ROW.value)
         return encodings
-
 
