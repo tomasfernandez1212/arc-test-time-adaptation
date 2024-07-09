@@ -1,4 +1,3 @@
-import torch
 from torch.utils.data import Dataset
 from enum import Enum 
 import os
@@ -10,13 +9,16 @@ class Split(Enum):
     EVAL = "evaluation"
 
 class ARCDataset(Dataset):
-    def __init__(self, split: Split, data_dir: str):
+    def __init__(self, split: Split = Split.TRAIN, data_dir: str = "../ARC-AGI/data"):
         self.split = split
         self.data_dir = data_dir
         self.split_dir = os.path.join(self.data_dir, self.split.value)
-        
-    def load_data(self):
         self.filenames = os.listdir(self.split_dir)
-        self.data = []
-        for filename in self.filenames:
-            task = load_and_validate_data(os.path.join(self.split_dir, filename))
+        
+    def __getitem__(self, index) -> Task:
+        filename = self.filenames[index]
+        task = load_and_validate_data(os.path.join(self.split_dir, filename))
+        return task
+    
+    def __len__(self):
+        return len(self.filenames)

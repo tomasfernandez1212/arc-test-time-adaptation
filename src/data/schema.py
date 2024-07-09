@@ -1,13 +1,17 @@
 from pydantic import BaseModel
 from typing import List
 
-class Grid(BaseModel):
-    __root__: List[List[int]]
+# Define Basic Types
+Cell = int
+Row = List[Cell]
+Grid = List[Row]
 
 class Pair(BaseModel):
     input: Grid
     output: Grid
 
+Pairs = List[Pair]
+
 class Task(BaseModel):
-    train: List[Pair]
-    test: List[Pair]
+    train: Pairs
+    test: Pairs
