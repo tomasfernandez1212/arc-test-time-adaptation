@@ -23,14 +23,12 @@ batch_size = 4 # Batch size
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Define Example Data Dimensions - 2x2 grids, 2 input pairs, 1 output to solve: 4x2x2+4 = 20
-special_tokens = ["<BOS>", "<EOS>", "<PAD>", "<start-of-pair>", "<end-of-pair>", "<start-of-grid>", "<end-of-grid>", "<start-of-row>", "<end-of-row>"]
-max_pixels_in_row = 30
-max_pixels_in_col = 30
-max_pairs_in_sample = 10
+max_pixels_in_row = 2 # Actual is 30 
+max_pixels_in_col = 2 # Actual is 30
+max_pairs_in_sample = 3 # Actual is 10
 max_tokens_per_row = 2+max_pixels_in_row # Start and End of Row
 max_tokens_per_grid = 2+max_tokens_per_row*max_pixels_in_col # Start and End of Grid
-max_tokens_per_pair = 2+max_tokens_per_grid*2 # Start and End of Pair
-max_tokens_per_sample = 2+max_tokens_per_pair*max_pairs_in_sample
+max_tokens_per_sample = 2+max_tokens_per_grid*max_pairs_in_sample # Actual is 9622
 
 
 # Initialize Model
