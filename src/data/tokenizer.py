@@ -1,9 +1,19 @@
 from src.data.schema import *
-from src.data.dataset import ARCDataset, Split
 from enum import Enum
+from typing import Tuple, List
 
-class Tokens(Enum):
-    PAD = "<padding>"
+class Token(Enum):
+    PAD = "<pad>"
+    BLACK = "<black>"
+    DARK_BLUE = "<dark-blue>"
+    RED = "<red>"
+    GREEN = "<green>"
+    YELLOW = "<yellow>"
+    GREY = "<grey>"
+    MAGENTA = "<magenta>"
+    ORANGE = "<orange>"
+    LIGHT_BLUE = "<light-blue>"
+    BURGUNDY = "<burgundy>"
     START_OF_SEQUENCE = "<start-of-sequence>"
     END_OF_SEQUENCE = "<end-of-sequence>"
     START_OF_GRID = "<start-of-grid>"
@@ -11,46 +21,65 @@ class Tokens(Enum):
     START_OF_ROW = "<start-of-row>"
     END_OF_ROW = "<end-of-row>"
 
-class Tokenizer:
+class Encoding(Enum):
+    PAD = -1
+    BLACK = 0
+    DARK_BLUE = 1
+    RED = 2
+    GREEN = 3
+    YELLOW = 4
+    GREY = 5
+    MAGENTA = 6
+    ORANGE = 7
+    LIGHT_BLUE = 8
+    BURGUNDY = 9
+    START_OF_SEQUENCE = 10
+    END_OF_SEQUENCE = 11
+    START_OF_GRID = 12
+    END_OF_GRID = 13
+    START_OF_ROW = 14
+    END_OF_ROW = 15
+
+class TaskEncoder:
     def __init__(self):
         pass 
 
-    def tokenize_task(self, task: Task):
-        encoder_sequence = self.tokenize_sequence(task, encoder=True)
-        decoder_sequence = self.tokenize_sequence(task, encoder=False)
+    def encode_task(self, task: Task) -> Tuple[List[int], List[int]]:
+        encoder_sequence = self.encode_sequence(task, encoder=True)
+        decoder_sequence = self.encode_sequence(task, encoder=False)
         return encoder_sequence, decoder_sequence
 
-    def tokenize_sequence(self, task: Task, encoder: bool) -> List[str]:
-        tokens = [Tokens.START_OF_SEQUENCE.value]
+    def encode_sequence(self, task: Task, encoder: bool) -> List[int]:
+        encodings = [Encoding.START_OF_SEQUENCE.value]
 
         if encoder:
             # Tokenize All Input Grids in Train and Test
             for pair in task.train:
-                tokens.extend(self.tokenize_grid(pair.input))
+                encodings.extend(self.encode_grid(pair.input))
             for pair in task.test:
-                tokens.extend(self.tokenize_grid(pair.input))
+                encodings.extend(self.encode_grid(pair.input))
         else:
             # Tokenize All Output Grids in Train and Test
             for pair in task.train:
-                tokens.extend(self.tokenize_grid(pair.output))
+                encodings.extend(self.encode_grid(pair.output))
             for pair in task.test:
-                tokens.extend(self.tokenize_grid(pair.output))
+                encodings.extend(self.encode_grid(pair.output))
 
-        tokens.append(Tokens.END_OF_SEQUENCE.value)
-        return tokens
+        encodings.append(Encoding.END_OF_SEQUENCE.value)
+        return encodings
             
-    def tokenize_grid(self, grid: Grid) -> List[str]:
-        tokens = [Tokens.START_OF_GRID.value]
+    def encode_grid(self, grid: Grid) -> List[int]:
+        encodings = [Encoding.START_OF_GRID.value]
         for row in grid:
-            tokens.extend(self.tokenize_row(row))
-        tokens.append(Tokens.END_OF_GRID.value)
-        return tokens
+            encodings.extend(self.encode_row(row))
+        encodings.append(Encoding.END_OF_GRID.value)
+        return encodings
 
-    def tokenize_row(self, row: Row) -> List[str]:
-        tokens = [Tokens.START_OF_ROW.value]
+    def encode_row(self, row: Row) -> List[int]:
+        encodings = [Encoding.START_OF_ROW.value]
         for cell in row:
-            tokens.append(str(cell))
-        tokens.append(Tokens.END_OF_ROW.value)
-        return tokens
+            encodings.append(cell)
+        encodings.append(Encoding.END_OF_ROW.value)
+        return encodings
 
 

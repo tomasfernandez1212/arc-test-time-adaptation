@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import math
+from src.data.tokenizer import Encoding
 
 class MultiHeadAttention(nn.Module):
     def __init__(self, d_model, num_heads):
@@ -147,8 +148,8 @@ class Transformer(nn.Module):
 
     def generate_mask(self, src, tgt):
         device = src.device  # Ensure the mask is on the same device as the input tensors
-        src_mask = (src != 0).unsqueeze(1).unsqueeze(2) 
-        tgt_mask = (tgt != 0).unsqueeze(1).unsqueeze(3) 
+        src_mask = (src != Encoding.PAD.value).unsqueeze(1).unsqueeze(2) 
+        tgt_mask = (tgt != Encoding.PAD.value).unsqueeze(1).unsqueeze(3) 
         seq_length = tgt.size(1)
         nopeak_mask = (1 - torch.triu(torch.ones(1, seq_length, seq_length, device=device), diagonal=1)).bool()
         tgt_mask = tgt_mask & nopeak_mask
