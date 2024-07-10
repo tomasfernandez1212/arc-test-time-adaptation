@@ -16,15 +16,21 @@ class ARCDataset(Dataset):
     def __init__(self, split: Split = Split.TRAIN, data_dir: str = "../ARC-AGI/data", task_encoder: TaskEncoder = TaskEncoder()):
         self.split = split
         self.data_dir = data_dir
-        self.split_dir = os.path.join(self.data_dir, self.split.value)
-        self.filenames = os.listdir(self.split_dir)
         self.task_encoder = task_encoder
 
         # Initialize Synthetic Task Generator
         if self.split == Split.SYNTHETIC_MIRRORED:
             self.synthetic_dataset = SyntheticTaskGenerator(mirrored_pairs=True)
+            self.num_tasks = 400
         elif self.split == Split.SYNTHETIC_NON_MIRRORED:
             self.synthetic_dataset = SyntheticTaskGenerator(mirrored_pairs=False)
+            self.num_tasks = 400
+        elif self.split == Split.TRAIN or self.split == Split.EVAL:
+            self.split_dir = os.path.join(self.data_dir, self.split.value)
+            self.filenames = os.listdir(self.split_dir)
+            self.num_tasks = len(self.filenames)
+        else: 
+            raise ValueError(f"Invalid split: {self.split} for ARCDataset.")
 
     def __getitem__(self, index):
 
@@ -43,4 +49,4 @@ class ARCDataset(Dataset):
         return src, tgt
 
     def __len__(self):
-        return len(self.filenames)
+        return self.num_tasks
