@@ -41,6 +41,10 @@ class Encoding(Enum):
     START_OF_ROW = 14
     END_OF_ROW = 15
 
+# Check if Encoding and Token Enums have the same keys
+if set(Encoding.__members__.keys()) != set(Token.__members__.keys()):
+    raise ValueError("Encoding and Token Enums must have the same keys.")
+
 class TaskEncoder:
     def __init__(self):
         pass 

@@ -3,3 +3,4 @@ torchvision
 torchaudio
 numpy<2.0.0
 pydantic
+tqdm
