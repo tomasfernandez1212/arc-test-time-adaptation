@@ -19,9 +19,11 @@ NUM_LAYERS = 6  # Number of encoder/decoder layers.
 D_FF = 4 * D_MODEL  # Feed Forward Hidden Layer Dimensionality
 
 # Define Context Window Size
-MAX_PIXELS_IN_ROW = 2  # Actual is 30
-MAX_PIXELS_IN_COL = 2  # Actual is 30
-MAX_PAIRS_IN_SAMPLE = 3  # Actual is 10
+MAX_PIXELS_IN_ROW = 30  # Actual is 30
+MAX_PIXELS_IN_COL = 30  # Actual is 30
+MAX_PAIRS_IN_SAMPLE = 10  # Actual is 10
+
+# Calculate Max Tokens per Sample
 MAX_TOKENS_PER_ROW = 2 + MAX_PIXELS_IN_ROW  # Start and End of Row
 MAX_TOKENS_PER_GRID = 2 + MAX_TOKENS_PER_ROW * MAX_PIXELS_IN_COL  # Start and End of Grid
 MAX_TOKENS_PER_SAMPLE = 2 + MAX_TOKENS_PER_GRID * MAX_PAIRS_IN_SAMPLE  # Actual is 9622
