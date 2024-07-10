@@ -1,8 +1,8 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, conint
 from typing import List
 
 # Define Basic Types
-Cell = int
+Cell = conint(ge=0, le=9) # Integer between 0 and 9
 Row = List[Cell]
 Grid = List[Row]
 
