@@ -6,6 +6,7 @@ from src.model.core import Transformer
 from src.data.tokenizer import Token, Encoding
 import torch.nn as nn
 import torch.optim as optim
+from torch.utils.tensorboard.writer import SummaryWriter  
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -40,6 +41,11 @@ optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 # Load the dataset and data loader
 train_dataset = ARCDataset(split=Split.TRAIN)
 train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+val_dataset = ARCDataset(split=Split.EVAL)  # Add validation dataset
+val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
+
+# Initialize TensorBoard writer
+writer = SummaryWriter()
 
 # Training loop
 for epoch in range(NUM_EPOCHS):
@@ -70,6 +76,34 @@ for epoch in range(NUM_EPOCHS):
         total_loss += loss.item()
     
     avg_loss = total_loss / len(train_loader)
+    writer.add_scalar('Loss/train', avg_loss, epoch)  # Log training loss
     print(f"Epoch [{epoch + 1}/{NUM_EPOCHS}], Loss: {avg_loss:.4f}")
 
+    # Evaluation loop
+    model.eval()
+    total_val_loss = 0
+    with torch.no_grad():
+        for src, tgt in val_loader:
+            src, tgt = src.to(DEVICE), tgt.to(DEVICE)
+            
+            # Prepare target input and output
+            tgt_input = tgt[:, :-1]
+            tgt_output = tgt[:, 1:]
+
+            # Forward pass
+            output = model(src, tgt_input)
+            
+            # Reshape output and target for loss computation
+            output = output.view(-1, TGT_POSSIBLE_TOKENS)
+            tgt_output = tgt_output.view(-1)
+
+            # Compute loss
+            loss = criterion(output, tgt_output)
+            total_val_loss += loss.item()
+    
+    avg_val_loss = total_val_loss / len(val_loader)
+    writer.add_scalar('Loss/val', avg_val_loss, epoch)  # Log validation loss
+    print(f"Epoch [{epoch + 1}/{NUM_EPOCHS}], Validation Loss: {avg_val_loss:.4f}")
+
 print("Training complete.")
+writer.close()  # Close the TensorBoard writer
