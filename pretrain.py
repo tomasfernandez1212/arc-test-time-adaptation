@@ -39,9 +39,9 @@ criterion = nn.CrossEntropyLoss(ignore_index=Encoding.PAD.value)
 optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
 # Load the dataset and data loader
-train_dataset = ARCDataset(split=Split.TRAIN)
+train_dataset = ARCDataset(split=Split.SYNTHETIC_MIRRORED)
 train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
-val_dataset = ARCDataset(split=Split.EVAL)  # Add validation dataset
+val_dataset = ARCDataset(split=Split.SYNTHETIC_MIRRORED)  
 val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
 # Initialize TensorBoard writer
@@ -75,8 +75,9 @@ for epoch in range(NUM_EPOCHS):
         
         total_loss += loss.item()
     
+    # Log training loss
     avg_loss = total_loss / len(train_loader)
-    writer.add_scalar('Loss/train', avg_loss, epoch)  # Log training loss
+    writer.add_scalar('Loss/train', avg_loss, epoch)  
     print(f"Epoch [{epoch + 1}/{NUM_EPOCHS}], Loss: {avg_loss:.4f}")
 
     # Evaluation loop
@@ -101,8 +102,9 @@ for epoch in range(NUM_EPOCHS):
             loss = criterion(output, tgt_output)
             total_val_loss += loss.item()
     
+    # Log validation loss
     avg_val_loss = total_val_loss / len(val_loader)
-    writer.add_scalar('Loss/val', avg_val_loss, epoch)  # Log validation loss
+    writer.add_scalar('Loss/val', avg_val_loss, epoch)  
     print(f"Epoch [{epoch + 1}/{NUM_EPOCHS}], Validation Loss: {avg_val_loss:.4f}")
 
 print("Training complete.")
