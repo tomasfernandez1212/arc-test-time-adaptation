@@ -1,3 +1,4 @@
+import os
 import torch
 from src.data.dataset import ARCDataset, Split
 from torch.utils.data import DataLoader
@@ -47,7 +48,10 @@ val_dataset = ARCDataset(split=Split.SYNTHETIC_MIRRORED)
 val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
 # Initialize TensorBoard writer
-writer = SummaryWriter()
+LOGS_DIR = "logs/pretrain"
+if not os.path.exists(LOGS_DIR):
+    os.makedirs(LOGS_DIR)
+writer = SummaryWriter(log_dir=LOGS_DIR)
 
 # Training loop
 for epoch in range(NUM_EPOCHS):
