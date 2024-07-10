@@ -17,7 +17,7 @@ class ARCDataset(Dataset):
         self.split = split
         self.data_dir = data_dir
         self.task_encoder = task_encoder
-
+        
         # Initialize Synthetic Task Generator
         if self.split == Split.SYNTHETIC_MIRRORED:
             self.synthetic_dataset = SyntheticTaskGenerator(mirrored_pairs=True)

@@ -46,13 +46,24 @@ if set(Encoding.__members__.keys()) != set(Token.__members__.keys()):
     raise ValueError("Encoding and Token Enums must have the same keys.")
 
 class TaskEncoder:
-    def __init__(self):
-        pass 
+    def __init__(self, max_sequence_length: int = 9622):
+        self.max_sequence_length = max_sequence_length
 
     def encode_task(self, task: Task) -> Tuple[List[int], List[int]]:
         encoder_sequence = self.encode_sequence(task, encoder=True)
         decoder_sequence = self.encode_sequence(task, encoder=False)
-        return list(encoder_sequence), list(decoder_sequence)
+        
+        # Pad sequences
+        encoder_sequence = list(self.pad_sequence(encoder_sequence))
+        decoder_sequence = list(self.pad_sequence(decoder_sequence))
+        
+        return encoder_sequence, decoder_sequence
+
+    def pad_sequence(self, sequence: deque) -> deque:
+        padding_length = self.max_sequence_length - len(sequence)
+        if padding_length > 0:
+            sequence.extend([Encoding.PAD.value] * padding_length)
+        return sequence
 
     def encode_sequence(self, task: Task, encoder: bool) -> deque:
         encodings = deque([Encoding.START_OF_SEQUENCE.value])
@@ -86,4 +97,3 @@ class TaskEncoder:
             encodings.append(cell)
         encodings.append(Encoding.END_OF_ROW.value)
         return encodings
-
