@@ -60,9 +60,9 @@ for epoch in range(NUM_EPOCHS):
     for src, tgt in tqdm(train_loader, desc=f"Epoch {epoch + 1}/{NUM_EPOCHS}"):
         src, tgt = src.to(DEVICE), tgt.to(DEVICE)
         
-        # Prepare target input and output
-        tgt_input = tgt[:, :-1]
-        tgt_output = tgt[:, 1:]
+        # Prepare decoder input and output
+        tgt_input = tgt[:, :-1] # Decoder input should not contain last token
+        tgt_output = tgt[:, 1:] # Decoder output should not contain first token
 
         # Forward pass
         output = model(src, tgt_input)
