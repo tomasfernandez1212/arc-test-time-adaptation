@@ -16,8 +16,8 @@ SRC_POSSIBLE_TOKENS = len(Token)  # Number of Colors + Other Tokens
 TGT_POSSIBLE_TOKENS = len(Token)  # Number of Colors + Other Tokens
 D_MODEL = 6  # Embeddings Dimension - Should be divisible by 2 for positional encoding.
 NUM_HEADS = 3  # Number of attention heads. D_MODEL must be divisible by NUM_HEADS.
-NUM_LAYERS = 6  # Number of encoder/decoder layers.
-D_FF = 4 * D_MODEL  # Feed Forward Hidden Layer Dimensionality
+NUM_LAYERS = 5  # Number of encoder/decoder layers.
+D_FF = 1 * D_MODEL  # Feed Forward Hidden Layer Dimensionality
 
 # Define Context Window Size
 MAX_PIXELS_IN_ROW = 30  # Actual is 30
@@ -30,7 +30,7 @@ MAX_TOKENS_PER_GRID = 2 + MAX_TOKENS_PER_ROW * MAX_PIXELS_IN_COL  # Start and En
 MAX_TOKENS_PER_SAMPLE = 2 + MAX_TOKENS_PER_GRID * MAX_PAIRS_IN_SAMPLE  # Actual is 9622
 
 # Define Training Parameters
-BATCH_SIZE = 4  # Batch size
+BATCH_SIZE = 1  # Batch size
 NUM_EPOCHS = 10  # Number of epochs
 LEARNING_RATE = 1e-4
 DROPOUT = 0.1  # Dropout probability
