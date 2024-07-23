@@ -23,23 +23,27 @@ class Token(Enum):
     END_OF_ROW = "<end-of-row>"
 
 class Encoding(Enum):
-    PAD = -1
-    BLACK = 0
-    DARK_BLUE = 1
-    RED = 2
-    GREEN = 3
-    YELLOW = 4
-    GREY = 5
-    MAGENTA = 6
-    ORANGE = 7
-    LIGHT_BLUE = 8
-    BURGUNDY = 9
-    START_OF_SEQUENCE = 10
-    END_OF_SEQUENCE = 11
-    START_OF_GRID = 12
-    END_OF_GRID = 13
-    START_OF_ROW = 14
-    END_OF_ROW = 15
+    PAD = 0
+    BLACK = 1
+    DARK_BLUE = 2
+    RED = 3
+    GREEN = 4
+    YELLOW = 5
+    GREY = 6
+    MAGENTA = 7
+    ORANGE = 8
+    LIGHT_BLUE = 9
+    BURGUNDY = 10
+    START_OF_SEQUENCE = 11
+    END_OF_SEQUENCE = 12
+    START_OF_GRID = 13
+    END_OF_GRID = 14
+    START_OF_ROW = 15
+    END_OF_ROW = 16
+
+# Check if Encodings are positive integers
+if any(encoding.value < 0 for encoding in Encoding):
+    raise ValueError("Encoding values must be positive integers.")
 
 # Check if Encoding and Token Enums have the same keys
 if set(Encoding.__members__.keys()) != set(Token.__members__.keys()):
