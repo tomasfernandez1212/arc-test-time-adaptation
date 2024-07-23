@@ -57,12 +57,12 @@ writer = SummaryWriter(log_dir=LOGS_DIR)
 for epoch in range(NUM_EPOCHS):
     model.train()
     total_loss = 0
-    for src, tgt in tqdm(train_loader, desc=f"Epoch {epoch + 1}/{NUM_EPOCHS}"):
+    for batch_idx, (src, tgt) in enumerate(tqdm(train_loader, desc=f"Epoch {epoch + 1}/{NUM_EPOCHS}")):
         src, tgt = src.to(DEVICE), tgt.to(DEVICE)
         
         # Prepare decoder input and output
-        tgt_input = tgt[:, :-1] # Decoder input should not contain last token
-        tgt_output = tgt[:, 1:] # Decoder output should not contain first token
+        tgt_input = tgt[:, :-1]  # Decoder input should not contain last token
+        tgt_output = tgt[:, 1:]  # Decoder output should not contain first token
 
         # Forward pass
         output = model(src, tgt_input)
@@ -80,10 +80,13 @@ for epoch in range(NUM_EPOCHS):
         optimizer.step()
         
         total_loss += loss.item()
+        
+        # Log batch loss
+        writer.add_scalar('Loss/train_batch', loss.item(), epoch * len(train_loader) + batch_idx)
     
-    # Log training loss
+    # Log average training loss for the epoch
     avg_loss = total_loss / len(train_loader)
-    writer.add_scalar('Loss/train', avg_loss, epoch)  
+    writer.add_scalar('Loss/train_epoch', avg_loss, epoch)  
     print(f"Epoch [{epoch + 1}/{NUM_EPOCHS}], Loss: {avg_loss:.4f}")
 
     # Evaluation loop
