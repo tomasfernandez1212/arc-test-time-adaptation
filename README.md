@@ -62,3 +62,8 @@ Once pre-training is complete and supervised training data is exhausted, I might
 
 This repository will document my journey and progress towards developing a solution for the ARC Challenge. Stay tuned for updates as I implement and refine my approach.
 
+#### Getting Started:
+
+- To run pretraining run `python pretrain.py`.
+- To view tensorboard run `tensorboard --logdir ./logs/pretrain`.
+
