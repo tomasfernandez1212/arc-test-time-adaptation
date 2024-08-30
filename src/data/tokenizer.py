@@ -98,6 +98,6 @@ class TaskEncoder:
     def encode_row(self, row: Row) -> deque:
         encodings = deque([Encoding.START_OF_ROW.value])
         for cell in row:
-            encodings.append(cell)
+            encodings.append(cell + Encoding.BLACK.value) # Add the first color's value since encodings are shifted due to other tokens
         encodings.append(Encoding.END_OF_ROW.value)
         return encodings
