@@ -14,4 +14,4 @@ Pairs = List[Pair]
 
 class Task(BaseModel):
     train: Pairs
-    test: Pairs
+    test: Pair

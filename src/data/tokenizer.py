@@ -78,9 +78,9 @@ class TaskEncoder:
         for pair in task.train:
             encodings.extend(self.encode_pair(pair))
 
-        # Tokenize All Pairs in Test
-        for pair in task.test:
-            encodings.extend(self.encode_pair(pair))
+        # Tokenize The Only Pair in Test
+        pair = task.test
+        encodings.extend(self.encode_pair(pair))
 
         encodings.append(Encoding.END_OF_SEQUENCE.value)
         return encodings
