@@ -19,13 +19,9 @@ class MultiHeadAttention(nn.Module):
         self.W_v = nn.Linear(d_model, d_model) # Value transformation
         self.W_o = nn.Linear(d_model, d_model) # Output transformation
         
-    def scaled_dot_product_attention(self, Q, K, V, mask=None):
+    def scaled_dot_product_attention(self, Q, K, V):
         # Calculate attention scores
         attn_scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.d_k)
-        
-        # Apply mask if provided (useful for preventing attention to certain parts like padding)
-        if mask is not None:
-            attn_scores = attn_scores.masked_fill(mask == 0, -1e9)
         
         # Softmax is applied to obtain attention probabilities
         attn_probs = torch.softmax(attn_scores, dim=-1)
@@ -44,14 +40,14 @@ class MultiHeadAttention(nn.Module):
         batch_size, _, seq_length, d_k = x.size()
         return x.transpose(1, 2).contiguous().view(batch_size, seq_length, self.d_model)
         
-    def forward(self, Q, K, V, mask=None):
+    def forward(self, Q, K, V):
         # Apply linear transformations and split heads
         Q = self.split_heads(self.W_q(Q))
         K = self.split_heads(self.W_k(K))
         V = self.split_heads(self.W_v(V))
         
         # Perform scaled dot-product attention
-        attn_output = self.scaled_dot_product_attention(Q, K, V, mask)
+        attn_output = self.scaled_dot_product_attention(Q, K, V)
         
         # Combine heads and apply output transformation
         output = self.W_o(self.combine_heads(attn_output))
@@ -123,20 +119,13 @@ class Transformer(nn.Module):
         self.fc = nn.Linear(d_model, vocab_size)
         self.dropout = nn.Dropout(dropout)
 
-    def generate_causal_mask(self, seq_length):
-        mask = torch.triu(torch.ones(seq_length, seq_length), diagonal=1).bool()
-        return mask.unsqueeze(0)  # Shape: (1, seq_length, seq_length)
-
     def forward(self, x):
-        seq_length = x.size(1)
         x = self.embedding(x)
         x = self.positional_encoding(x)
         x = self.dropout(x)
 
-        mask = self.generate_causal_mask(seq_length).to(x.device)
-
         for layer in self.decoder_layers:
-            x = layer(x, mask)
+            x = layer(x)
 
         output = self.fc(x)
         return output
