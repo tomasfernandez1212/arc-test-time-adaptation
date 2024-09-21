@@ -2,62 +2,75 @@ import torch
 import torch.nn as nn
 import math
 from src.data.tokenizer import Encoding
+from torch.nn.attention.flex_attention import flex_attention, create_block_mask, BlockMask
+import functools
+
+def causal_mask_mod(b, h, q_idx, kv_idx):
+    return q_idx >= kv_idx
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, d_model, num_heads):
+    def __init__(self, d_model, num_heads, block_size=128):
         super(MultiHeadAttention, self).__init__()
-        # Ensure that the model dimension (d_model) is divisible by the number of heads
         assert d_model % num_heads == 0, "d_model must be divisible by num_heads"
         
-        # Initialize dimensions
-        self.d_model = d_model # Model's dimension
-        self.num_heads = num_heads # Number of attention heads
-        self.d_k = d_model // num_heads # Dimension of each head's key, query, and value
+        self.d_model = d_model
+        self.num_heads = num_heads
+        self.d_k = d_model // num_heads
         
-        # Linear layers for transforming inputs
-        self.W_q = nn.Linear(d_model, d_model) # Query transformation
-        self.W_k = nn.Linear(d_model, d_model) # Key transformation
-        self.W_v = nn.Linear(d_model, d_model) # Value transformation
-        self.W_o = nn.Linear(d_model, d_model) # Output transformation
+        self.W_q = nn.Linear(d_model, d_model)
+        self.W_k = nn.Linear(d_model, d_model)
+        self.W_v = nn.Linear(d_model, d_model)
+        self.W_o = nn.Linear(d_model, d_model)
         
-    def scaled_dot_product_attention(self, Q, K, V, mask=None):
-        # Calculate attention scores
-        attn_scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.d_k)
-        
-        # Apply mask if provided (useful for preventing attention to certain parts like padding)
-        if mask is not None:
-            attn_scores = attn_scores.masked_fill(mask == 0, -1e9)
-        
-        # Softmax is applied to obtain attention probabilities
-        attn_probs = torch.softmax(attn_scores, dim=-1)
-        
-        # Multiply by values to obtain the final output
-        output = torch.matmul(attn_probs, V)
-        return output
-        
-    def split_heads(self, x):
-        # Reshape the input to have num_heads for multi-head attention
-        batch_size, seq_length, d_model = x.size()
-        return x.view(batch_size, seq_length, self.num_heads, self.d_k).transpose(1, 2)
-        
-    def combine_heads(self, x):
-        # Combine the multiple heads back to original shape
-        batch_size, _, seq_length, d_k = x.size()
-        return x.transpose(1, 2).contiguous().view(batch_size, seq_length, self.d_model)
-        
+        # Initialize BlockMask for causal masking
+        self.block_size = block_size
+        self.block_mask = None  # Will be set in forward based on sequence length
+
+    def initialize_block_mask(self, seq_length, device):
+        if self.block_mask is None or self.block_mask.pe.size(1) < seq_length:
+            self.block_mask = create_block_mask(
+                mask_mod=causal_mask_mod,
+                B=None,
+                H=None,
+                Q_LEN=seq_length,
+                KV_LEN=seq_length,
+                BLOCK_SIZE=self.block_size
+            ).to(device)
+
     def forward(self, Q, K, V, mask=None):
-        # Apply linear transformations and split heads
-        Q = self.split_heads(self.W_q(Q))
-        K = self.split_heads(self.W_k(K))
-        V = self.split_heads(self.W_v(V))
+        """
+        Q, K, V: Tensor of shape (batch_size, seq_length, d_model)
+        mask: Not used as FlexAttention handles masking internally via BlockMask
+        """
+        batch_size, seq_length, _ = Q.size()
+        device = Q.device
         
-        # Perform scaled dot-product attention
-        attn_output = self.scaled_dot_product_attention(Q, K, V, mask)
+        self.initialize_block_mask(seq_length, device)
         
-        # Combine heads and apply output transformation
-        output = self.W_o(self.combine_heads(attn_output))
+        # Apply linear transformations
+        Q = self.W_q(Q)  # (batch_size, seq_length, d_model)
+        K = self.W_k(K)
+        V = self.W_v(V)
+        
+        # Reshape for multi-head attention
+        Q = Q.view(batch_size, seq_length, self.num_heads, self.d_k).transpose(1, 2)  # (batch_size, num_heads, seq_length, d_k)
+        K = K.view(batch_size, seq_length, self.num_heads, self.d_k).transpose(1, 2)
+        V = V.view(batch_size, seq_length, self.num_heads, self.d_k).transpose(1, 2)
+        
+        # Perform FlexAttention
+        attn_output = flex_attention(
+            Q, K, V,
+            block_mask=self.block_mask,
+            score_mod=causal_mask_mod  # Using mask_mod for causal masking
+        )
+        
+        # Combine heads
+        attn_output = attn_output.transpose(1, 2).contiguous().view(batch_size, seq_length, self.d_model)
+        
+        # Output linear transformation
+        output = self.W_o(attn_output)
         return output
-    
+
 class PositionWiseFeedForward(nn.Module):
     def __init__(self, d_model, d_ff):
         super(PositionWiseFeedForward, self).__init__()
@@ -67,11 +80,10 @@ class PositionWiseFeedForward(nn.Module):
 
     def forward(self, x):
         return self.fc2(self.relu(self.fc1(x)))
-    
+
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, max_tokens_per_sample):
         super(PositionalEncoding, self).__init__()
-        # Positional encoding per sample
         pe = self._generate_positional_encoding(max_tokens_per_sample, d_model)
         self.register_buffer('pe', pe)
 
@@ -88,15 +100,10 @@ class PositionalEncoding(nn.Module):
     def forward(self, x):
         device = x.device
         batch_size, seq_length, d_model = x.size()
-        
-        # Ensure pe is on the same device as x
         pe = self.pe[:, :seq_length, :].to(device)
-        
-        # Add the positional encoding to each batch in the input tensor
         x = x + pe
-        
         return x
-    
+
 class EncoderLayer(nn.Module):
     def __init__(self, d_model, num_heads, d_ff, dropout):
         super(EncoderLayer, self).__init__()
@@ -112,7 +119,7 @@ class EncoderLayer(nn.Module):
         ff_output = self.feed_forward(x)
         x = self.norm2(x + self.dropout(ff_output))
         return x
-    
+
 class DecoderLayer(nn.Module):
     def __init__(self, d_model, num_heads, d_ff, dropout):
         super(DecoderLayer, self).__init__()
@@ -132,7 +139,7 @@ class DecoderLayer(nn.Module):
         ff_output = self.feed_forward(x)
         x = self.norm3(x + self.dropout(ff_output))
         return x
-    
+
 class Transformer(nn.Module):
     def __init__(self, src_possible_tokens, tgt_possible_tokens, max_tokens_per_sample, d_model, num_heads, num_layers, d_ff, dropout):
         super(Transformer, self).__init__()
@@ -146,27 +153,17 @@ class Transformer(nn.Module):
         self.fc = nn.Linear(d_model, tgt_possible_tokens)
         self.dropout = nn.Dropout(dropout)
 
-    def generate_mask(self, src, tgt):
-        device = src.device  # Ensure the mask is on the same device as the input tensors
-        src_mask = (src != Encoding.PAD.value).unsqueeze(1).unsqueeze(2) 
-        tgt_mask = (tgt != Encoding.PAD.value).unsqueeze(1).unsqueeze(3) 
-        seq_length = tgt.size(1)
-        nopeak_mask = (1 - torch.triu(torch.ones(1, seq_length, seq_length, device=device), diagonal=1)).bool()
-        tgt_mask = tgt_mask & nopeak_mask
-        return src_mask, tgt_mask
-
     def forward(self, src, tgt):
-        src_mask, tgt_mask = self.generate_mask(src, tgt)
         src_embedded = self.dropout(self.positional_encoding(self.encoder_embedding(src)))
         tgt_embedded = self.dropout(self.positional_encoding(self.decoder_embedding(tgt)))
 
         enc_output = src_embedded
         for enc_layer in self.encoder_layers:
-            enc_output = enc_layer(enc_output, src_mask)
+            enc_output = enc_layer(enc_output, mask=None)  # FlexAttention handles masking internally
 
         dec_output = tgt_embedded
         for dec_layer in self.decoder_layers:
-            dec_output = dec_layer(dec_output, enc_output, src_mask, tgt_mask)
+            dec_output = dec_layer(dec_output, enc_output, src_mask=None, tgt_mask=None)  # Masking via FlexAttention
 
         output = self.fc(dec_output)
         return output
