@@ -12,22 +12,22 @@ from torch.utils.tensorboard.writer import SummaryWriter
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Define Model Parameters
-SRC_POSSIBLE_TOKENS = len(Token)  # Number of Colors + Other Tokens
-TGT_POSSIBLE_TOKENS = len(Token)  # Number of Colors + Other Tokens
+VOCAB_SIZE = len(Token)  # Number of Colors + Other Tokens
 D_MODEL = 6  # Embeddings Dimension - Should be divisible by 2 for positional encoding.
 NUM_HEADS = 3  # Number of attention heads. D_MODEL must be divisible by NUM_HEADS.
-NUM_LAYERS = 5  # Number of encoder/decoder layers.
+NUM_LAYERS = 5  # Number of decoder layers.
 D_FF = 1 * D_MODEL  # Feed Forward Hidden Layer Dimensionality
 
 # Define Context Window Size
 MAX_PIXELS_IN_ROW = 30  # Actual is 30
 MAX_PIXELS_IN_COL = 30  # Actual is 30
-MAX_PAIRS_IN_SAMPLE = 10  # Actual is 10
+MAX_PAIRS_IN_TASK = 10  # Actual is 10
 
 # Calculate Max Tokens per Sample
 MAX_TOKENS_PER_ROW = 2 + MAX_PIXELS_IN_ROW  # Start and End of Row
 MAX_TOKENS_PER_GRID = 2 + MAX_TOKENS_PER_ROW * MAX_PIXELS_IN_COL  # Start and End of Grid
-MAX_TOKENS_PER_SAMPLE = 2 + MAX_TOKENS_PER_GRID * MAX_PAIRS_IN_SAMPLE  # Actual is 9622
+MAX_TOKENS_PER_PAIR = 2 + 2 * MAX_TOKENS_PER_GRID  # Start and End of Pair, 2 Grids Per Pair
+MAX_TOKENS_PER_TASK = 2 + MAX_TOKENS_PER_PAIR * MAX_PAIRS_IN_TASK  # Actual is 19262
 
 # Define Training Parameters
 BATCH_SIZE = 1  # Batch size
@@ -36,7 +36,7 @@ LEARNING_RATE = 1e-4
 DROPOUT = 0.1  # Dropout probability
 
 # Initialize Model, Loss Function, and Optimizer
-model = Transformer(SRC_POSSIBLE_TOKENS, TGT_POSSIBLE_TOKENS, MAX_TOKENS_PER_SAMPLE, D_MODEL, NUM_HEADS, NUM_LAYERS, D_FF, DROPOUT)
+model = Transformer(VOCAB_SIZE, MAX_TOKENS_PER_TASK, D_MODEL, NUM_HEADS, NUM_LAYERS, D_FF, DROPOUT)
 model.to(DEVICE)
 criterion = nn.CrossEntropyLoss(ignore_index=Encoding.PAD.value)
 optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
@@ -57,22 +57,22 @@ writer = SummaryWriter(log_dir=LOGS_DIR)
 for epoch in range(NUM_EPOCHS):
     model.train()
     total_loss = 0
-    for batch_idx, (src, tgt) in enumerate(tqdm(train_loader, desc=f"Epoch {epoch + 1}/{NUM_EPOCHS}")):
-        src, tgt = src.to(DEVICE), tgt.to(DEVICE)
+    for batch_idx, sequence in enumerate(tqdm(train_loader, desc=f"Epoch {epoch + 1}/{NUM_EPOCHS}")):
+        sequence = sequence.to(DEVICE)
         
         # Prepare decoder input and output
-        tgt_input = tgt[:, :-1]  # Decoder input should not contain last token
-        tgt_output = tgt[:, 1:]  # Decoder output should not contain first token
+        decoder_input = sequence[:, :-1]  # Decoder input should be shifted left relative to output
+        decoder_target = sequence[:, 1:]  # Decoder output should be shifted right relative to input
 
         # Forward pass
-        output = model(src, tgt_input)
+        decoder_output = model(decoder_input)
         
         # Reshape output and target for loss computation
-        output = output.view(-1, TGT_POSSIBLE_TOKENS)
-        tgt_output = tgt_output.view(-1)
+        decoder_output = decoder_output.view(-1, VOCAB_SIZE)
+        decoder_target = decoder_target.view(-1)
 
         # Compute loss
-        loss = criterion(output, tgt_output)
+        loss = criterion(decoder_output, decoder_target)
         
         # Backward pass and optimization
         optimizer.zero_grad()
@@ -93,22 +93,22 @@ for epoch in range(NUM_EPOCHS):
     model.eval()
     total_val_loss = 0
     with torch.no_grad():
-        for src, tgt in val_loader:
-            src, tgt = src.to(DEVICE), tgt.to(DEVICE)
+        for sequence in val_loader:
+            sequence = sequence.to(DEVICE)
             
             # Prepare target input and output
-            tgt_input = tgt[:, :-1]
-            tgt_output = tgt[:, 1:]
+            decoder_input = sequence[:, :-1] # Decoder input should be shifted left relative to output
+            decoder_target = sequence[:, 1:] # Decoder output should be shifted right relative to input
 
             # Forward pass
-            output = model(src, tgt_input)
+            decoder_output = model(decoder_input)
             
             # Reshape output and target for loss computation
-            output = output.view(-1, TGT_POSSIBLE_TOKENS)
-            tgt_output = tgt_output.view(-1)
+            decoder_output = decoder_output.view(-1, VOCAB_SIZE)
+            decoder_target = decoder_target.view(-1)
 
             # Compute loss
-            loss = criterion(output, tgt_output)
+            loss = criterion(decoder_output, decoder_target)
             total_val_loss += loss.item()
     
     # Log validation loss

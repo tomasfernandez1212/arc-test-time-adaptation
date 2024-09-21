@@ -41,12 +41,10 @@ class ARCDataset(Dataset):
             filename = self.filenames[index]
             task = load_and_validate_data(os.path.join(self.split_dir, filename))
         
-        encoder_seq, decoder_seq = self.task_encoder.encode_task(task)
+        encoded_sequence = self.task_encoder.encode_task(task)
+        encoded_sequence = torch.tensor(encoded_sequence, dtype=torch.long)
         
-        src = torch.tensor(encoder_seq, dtype=torch.long)
-        tgt = torch.tensor(decoder_seq, dtype=torch.long)
-        
-        return src, tgt
+        return encoded_sequence
 
     def __len__(self):
         return self.num_tasks

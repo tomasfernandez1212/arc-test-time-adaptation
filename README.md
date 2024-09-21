@@ -7,7 +7,7 @@ To incentivize progress, the ARC Prize offers over $1,000,000 to anyone who can 
 
 ## My Approach
 ### Goal
-My goal is to create a transformer encoder-decoder capable of natively perceiving and generating data in the domain of integer grids, the format used in the ARC tasks.
+My goal is to create a transformer capable of natively perceiving and generating data in the domain of integer grids, the format used in the ARC tasks.
 
 ### Strategy
 #### Custom Tokenization and Embedding:
@@ -20,12 +20,10 @@ Existing transformers struggle with ARC tasks due to inadequate grid tokenizatio
 
 I will develop a simpler tokenizer and embedding space tailored for the integer grids. This approach will avoid the complexity of Vision Transformers' patching and tokenization, focusing instead on a custom solution suitable for the simplicity of ARC grids.
 
-#### Encoder-Decoder:
-Unlike modern decoder-only LLMs, I will use a encoder-decoder architecture similar to those used translate problems. 
+#### Decoder-Only Architecture:
+Initially, I had planned to use an encoder-decoder architecture as the ARC Challenge has similarities to translation problems where the inputs grids were only "language" and the output grids were in another. The model would learn to translate from input to output. 
 
-For example, given a new task with 2 "pairs" of "input" and "output" for training and 1 unpaired input for testing, I will pass all 3 _inputs_ to the encoder and the 2 _outputs_ to the decoder. The decoder should then proceed to generate the output for the test. 
-
-Learning a mapping from input to output grids is similar to translation, hence the use of encoder-decoder architecture. 
+However, I have transitioned to a **decoder-only** architecture. This was done to simplify the model architecture, reduce the number of parameters and computational overhead, and unify processing. With a decoder-only transformer, I can more easily use FlexAttention to add inductive biases to the model to reflect the relationship between pixels -> rows -> grids -> pairs -> task as well as add causal masking for the output grid of the test pair.  
 
 #### Positional Encoding:
 

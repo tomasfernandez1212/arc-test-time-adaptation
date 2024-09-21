@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import math
-from src.data.tokenizer import Encoding
 
 class MultiHeadAttention(nn.Module):
     def __init__(self, d_model, num_heads):
@@ -97,76 +96,47 @@ class PositionalEncoding(nn.Module):
         
         return x
     
-class EncoderLayer(nn.Module):
+class DecoderLayer(nn.Module):
     def __init__(self, d_model, num_heads, d_ff, dropout):
-        super(EncoderLayer, self).__init__()
+        super(DecoderLayer, self).__init__()
         self.self_attn = MultiHeadAttention(d_model, num_heads)
         self.feed_forward = PositionWiseFeedForward(d_model, d_ff)
         self.norm1 = nn.LayerNorm(d_model)
         self.norm2 = nn.LayerNorm(d_model)
         self.dropout = nn.Dropout(dropout)
-        
-    def forward(self, x, mask):
-        attn_output = self.self_attn(x, x, x, mask)
+
+    def forward(self, x, tgt_mask):
+        attn_output = self.self_attn(x, x, x, tgt_mask)
         x = self.norm1(x + self.dropout(attn_output))
         ff_output = self.feed_forward(x)
         x = self.norm2(x + self.dropout(ff_output))
         return x
     
-class DecoderLayer(nn.Module):
-    def __init__(self, d_model, num_heads, d_ff, dropout):
-        super(DecoderLayer, self).__init__()
-        self.self_attn = MultiHeadAttention(d_model, num_heads)
-        self.cross_attn = MultiHeadAttention(d_model, num_heads)
-        self.feed_forward = PositionWiseFeedForward(d_model, d_ff)
-        self.norm1 = nn.LayerNorm(d_model)
-        self.norm2 = nn.LayerNorm(d_model)
-        self.norm3 = nn.LayerNorm(d_model)
-        self.dropout = nn.Dropout(dropout)
-        
-    def forward(self, x, enc_output, src_mask, tgt_mask):
-        attn_output = self.self_attn(x, x, x, tgt_mask)
-        x = self.norm1(x + self.dropout(attn_output))
-        attn_output = self.cross_attn(x, enc_output, enc_output, src_mask)
-        x = self.norm2(x + self.dropout(attn_output))
-        ff_output = self.feed_forward(x)
-        x = self.norm3(x + self.dropout(ff_output))
-        return x
-    
 class Transformer(nn.Module):
-    def __init__(self, src_possible_tokens, tgt_possible_tokens, max_tokens_per_sample, d_model, num_heads, num_layers, d_ff, dropout):
+    def __init__(self, vocab_size, max_seq_length, d_model, num_heads, num_layers, d_ff, dropout):
         super(Transformer, self).__init__()
-        self.encoder_embedding = nn.Embedding(src_possible_tokens, d_model)
-        self.decoder_embedding = nn.Embedding(tgt_possible_tokens, d_model)
-        self.positional_encoding = PositionalEncoding(d_model, max_tokens_per_sample)
-
-        self.encoder_layers = nn.ModuleList([EncoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)])
-        self.decoder_layers = nn.ModuleList([DecoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)])
-
-        self.fc = nn.Linear(d_model, tgt_possible_tokens)
+        self.embedding = nn.Embedding(vocab_size, d_model)
+        self.positional_encoding = PositionalEncoding(d_model, max_seq_length)
+        self.decoder_layers = nn.ModuleList([
+            DecoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)
+        ])
+        self.fc = nn.Linear(d_model, vocab_size)
         self.dropout = nn.Dropout(dropout)
 
-    def generate_mask(self, src, tgt):
-        device = src.device  # Ensure the mask is on the same device as the input tensors
-        src_mask = (src != Encoding.PAD.value).unsqueeze(1).unsqueeze(2) 
-        tgt_mask = (tgt != Encoding.PAD.value).unsqueeze(1).unsqueeze(3) 
-        seq_length = tgt.size(1)
-        nopeak_mask = (1 - torch.triu(torch.ones(1, seq_length, seq_length, device=device), diagonal=1)).bool()
-        tgt_mask = tgt_mask & nopeak_mask
-        return src_mask, tgt_mask
+    def generate_causal_mask(self, seq_length):
+        mask = torch.triu(torch.ones(seq_length, seq_length), diagonal=1).bool()
+        return mask.unsqueeze(0)  # Shape: (1, seq_length, seq_length)
 
-    def forward(self, src, tgt):
-        src_mask, tgt_mask = self.generate_mask(src, tgt)
-        src_embedded = self.dropout(self.positional_encoding(self.encoder_embedding(src)))
-        tgt_embedded = self.dropout(self.positional_encoding(self.decoder_embedding(tgt)))
+    def forward(self, x):
+        seq_length = x.size(1)
+        x = self.embedding(x)
+        x = self.positional_encoding(x)
+        x = self.dropout(x)
 
-        enc_output = src_embedded
-        for enc_layer in self.encoder_layers:
-            enc_output = enc_layer(enc_output, src_mask)
+        mask = self.generate_causal_mask(seq_length).to(x.device)
 
-        dec_output = tgt_embedded
-        for dec_layer in self.decoder_layers:
-            dec_output = dec_layer(dec_output, enc_output, src_mask, tgt_mask)
+        for layer in self.decoder_layers:
+            x = layer(x, mask)
 
-        output = self.fc(dec_output)
+        output = self.fc(x)
         return output
