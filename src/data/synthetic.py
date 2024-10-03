@@ -38,13 +38,9 @@ class SyntheticTaskGenerator:
         # Randomly Sample Amount of Pairs in Train
         num_train_pairs = min(max(np.random.poisson(lam=self.num_train_pairs_mean), self.num_train_pairs_min), self.num_train_pairs_max)
 
-        # Always 1 test pair
-        num_test_pairs = 1 
-
         for _ in range(num_train_pairs):
             train_pairs.append(self._generate_pair())
-        for _ in range(num_test_pairs):
-            test_pairs.append(self._generate_pair())
+        test_pair = self._generate_pair()
 
 
-        return Task(train=list(train_pairs), test=list(test_pairs))
+        return Task(train=list(train_pairs), test=test_pair)
