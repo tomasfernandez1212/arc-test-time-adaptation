@@ -20,14 +20,39 @@ Existing transformers struggle with ARC tasks due to inadequate grid tokenizatio
 
 I will develop a simpler tokenizer and embedding space tailored for the integer grids. This approach will avoid the complexity of Vision Transformers' patching and tokenization, focusing instead on a custom solution suitable for the simplicity of ARC grids.
 
-#### Decoder-Only Architecture:
-Initially, I had planned to use an encoder-decoder architecture as the ARC Challenge has similarities to translation problems where the inputs grids were only "language" and the output grids were in another. The model would learn to translate from input to output. 
+The size of the vocabulary is much smaller than in language modeling, which is a fact we can exploit. I create custom tokens that represent the 10 unique colors of each pixel, the start and end of a row, the start and end of a grid, the start and end of a pair, and the start and end of a sequence.
 
-However, I have transitioned to a **decoder-only** architecture. This was done to simplify the model architecture, reduce the number of parameters and computational overhead, and unify processing. With a decoder-only transformer, I can more easily use FlexAttention to add inductive biases to the model to reflect the relationship between pixels -> rows -> grids -> pairs -> task as well as add causal masking for the output grid of the test pair.  
+#### Decoder-Only Architecture:
+Initially, I had planned to use an encoder-decoder architecture as the ARC Challenge has similarities to translation problems where the inputs grids in one "language" and the output grids were in another. The model would learn to translate from input to output. 
+
+However, I have transitioned to a **decoder-only** architecture. This was done to simplify the model architecture, reduce the number of parameters and computational overhead, and unify processing. With a decoder-only transformer, I can also more easily use FlexAttention to add inductive biases to the model to reflect the relationship between pixels -> rows -> grids -> pairs -> task as well as add causal masking for the output grid of the test pair.  
+
+#### Custom Attention Mask:
+
+In language modeling, bidirectional, self, and causal attention are typically used. However, in the ARC Challenge, we have a very particular structure that we can exploit. For instance, not every pixel needs to attend to every other pixel. We can allow each pixel to attend and be attended to a token representing the state of a row. Similarly, we can allow the row tokens to attend and be attended to by tokens representing the state of that grid. Grid tokens can attend to and be attended to by tokens representing the state of that pair. Pair tokens can attend to and be attended by tokens representing the state of the sequence. In essence, a type of hierarchical attention. 
+
+<div align="center">
+        <img src="media/Attention%20Mask.png" alt="Attention Mask" width="400"/>
+        <p><em>Figure 1: Visualization of the custom attention mask for ARC task. The y-axis represents the index of the query token, and the x-axis represents the index of the key token. Blank cells are where attention is not allowed. The colored cells indicate where attention is allowed.</em></p>
+</div>
+
+Further, we can allow the input and output grids for training as well as the input grid for testing to attend to each other. In contrast, for the output grid of the test pair, we only want causal attention since we don't want the model to cheat on the task by looking ahead.
+
+<div align="center">
+        <img src="media/Attention%20Mask%20Breakdown.png" alt="Attention Mask" width="400"/>
+        <p><em>Figure 2: Visualization showing a breakdown of the custom attention mask. The hierarchy of the query indices are broken down from most general to most specific: Sequence -> Pair -> Grid -> Row -> Pixel.</em></p>
+</div>
+
+<div align="center">
+        <img src="media/Attention%20Mask%20Areas.png" alt="Attention Mask" width="400"/>
+        <p><em>Figure 3: Visualization showing the main areas of the custom causal attention mask. The prefix area only applies hierarchical attention, while the test area which is comprised of the test's output grid applies hierarchical and causal attention.</em></p>
+</div>
+
+Given this custom attention masking, we hope the model will learn more efficiently due to the inductive biases encoded in the hierarchy and also with a reduced memory footprint given the sparsity of the attention mask.
 
 #### Positional Encoding:
 
-Given that within grids the relative position of values matters as it does in language modeling, I will use positional encodings. There needs to be encoding of positions within a grid as well as encoding of positions between grids. The latter is such that the model can understand that input grid i corresponds to output grid i. 
+Given that within grids the relative position of values matters as it does in language modeling, I will use positional encodings. Here we add positional encodings to all tokens. 
 
 #### Adaptation to New Tasks:
 Unlike in general translation problems, we don't have abundant data to learn the mappings between languages (input-output pairs). Rather, we must learn to translate to new "languages" (tasks) during inference. 
