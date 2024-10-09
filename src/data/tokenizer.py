@@ -98,17 +98,18 @@ class TaskEncoder:
 
         # Delegate - Each Training Pair 
         for pair in task.train:
-            child_indices.extend(self._encode_pair(pair, encoded_sequence, attention))
+            child_indices_from_pair, _ = self._encode_pair(pair, encoded_sequence, attention)
+            child_indices.extend(child_indices_from_pair)
 
         # Delegate - The Test Pair
-        child_indices.extend(self._encode_pair(task.test[0], encoded_sequence, attention, is_test=True))
+        child_indices_from_pair, output_grid_start_index = self._encode_pair(task.test[0], encoded_sequence, attention)
+        child_indices.extend(child_indices_from_pair)
 
         # Add - End the sequence
         encoded_sequence.append(Encoding.END_OF_SEQUENCE.value)
         end_of_sequence_index = len(encoded_sequence) - 1
 
-        # Set Attention - Start & End of Sequence
-        attention[start_of_sequence_index][end_of_sequence_index] = True 
+        # Set Attention - End can Attend to Start
         attention[end_of_sequence_index][start_of_sequence_index] = True 
 
         # Set Attention - Parent to Children & Children to Parent
@@ -121,12 +122,20 @@ class TaskEncoder:
         attention[i_indices, j_indices] = True
         attention[j_indices, i_indices] = True
 
-        # Set Attention - Self 
+        # Set Attention - Self (Up to End of Sequence - Skip Padding)
         attention.diagonal()[:end_of_sequence_index+1] = True
 
-    def _encode_pair(self, pair: Pair, encoded_sequence: deque, attention: torch.Tensor, is_test: bool = False) -> deque:
+        # Set Attention - Causality for Test Output Grid - Negate Non-Prefix Indices
+        row_indices, col_indices = torch.triu_indices(attention.size(0), attention.size(1), offset=1) # Standard Upper Triangular Indices
+        mask = col_indices >= output_grid_start_index # Only Keep Columns From Start of Output Grid
+        attention[row_indices[mask], col_indices[mask]] = False # Negate These Indices
+
+        return parent_indices
+
+
+    def _encode_pair(self, pair: Pair, encoded_sequence: deque, attention: torch.Tensor) -> Tuple[deque, int]:
         """
-        Given a Pair, encodes the pair into encoded_sequence and returns a deque of the start and end indices of the pair.
+        Given a Pair, encodes the pair into encoded_sequence and a tuple which includes a deque of the start and end indices of the pair as well as the start index of the output grid.
         """
 
         # Add - Start of Pair
@@ -160,17 +169,7 @@ class TaskEncoder:
         attention[i_indices, j_indices] = True
         attention[j_indices, i_indices] = True
 
-        # Set Attention - Causality for Output Grid on Test 
-        if is_test:
-            ouput_grid_start_index = ouput_grid_indices[0]
-            output_grid_end_index = ouput_grid_indices[1]
-            output_grid_size = output_grid_end_index-ouput_grid_start_index
-            triu_indices = torch.triu_indices(output_grid_size, output_grid_size, offset=1)
-            output_grid_triu_rows = triu_indices[0]+ouput_grid_start_index
-            output_grid_triu_cols = triu_indices[1]+ouput_grid_start_index
-            attention[output_grid_triu_rows, output_grid_triu_cols] = False
-
-        return parent_indices
+        return parent_indices, ouput_grid_indices[0]
 
 
     def _encode_grid(self, grid: Grid, encoded_sequence: deque, attention: torch.Tensor) -> deque:
