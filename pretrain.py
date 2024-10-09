@@ -1,6 +1,7 @@
 import os
 import torch
 from src.data.dataset import ARCDataset, Split
+from src.data.context import MAX_TOKENS_PER_TASK
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from src.model.core import Transformer
@@ -13,21 +14,10 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Define Model Parameters
 VOCAB_SIZE = len(Token)  # Number of Colors + Other Tokens
-D_MODEL = 6  # Embeddings Dimension - Should be divisible by 2 for positional encoding.
-NUM_HEADS = 3  # Number of attention heads. D_MODEL must be divisible by NUM_HEADS.
-NUM_LAYERS = 5  # Number of decoder layers.
+D_MODEL = 2  # Embeddings Dimension - Should be divisible by 2 for positional encoding. Example: 6
+NUM_HEADS = 1  # Number of attention heads. D_MODEL must be divisible by NUM_HEADS. Example: 3
+NUM_LAYERS = 1  # Number of decoder layers. Example: 5
 D_FF = 1 * D_MODEL  # Feed Forward Hidden Layer Dimensionality
-
-# Define Context Window Size
-MAX_PIXELS_IN_ROW = 30  # Actual is 30
-MAX_PIXELS_IN_COL = 30  # Actual is 30
-MAX_PAIRS_IN_TASK = 10  # Actual is 10
-
-# Calculate Max Tokens per Sample
-MAX_TOKENS_PER_ROW = 2 + MAX_PIXELS_IN_ROW  # Start and End of Row
-MAX_TOKENS_PER_GRID = 2 + MAX_TOKENS_PER_ROW * MAX_PIXELS_IN_COL  # Start and End of Grid
-MAX_TOKENS_PER_PAIR = 2 + 2 * MAX_TOKENS_PER_GRID  # Start and End of Pair, 2 Grids Per Pair
-MAX_TOKENS_PER_TASK = 2 + MAX_TOKENS_PER_PAIR * MAX_PAIRS_IN_TASK  # Actual is 19262
 
 # Define Training Parameters
 BATCH_SIZE = 1  # Batch size
@@ -57,8 +47,11 @@ writer = SummaryWriter(log_dir=LOGS_DIR)
 for epoch in range(NUM_EPOCHS):
     model.train()
     total_loss = 0
-    for batch_idx, sequence in enumerate(tqdm(train_loader, desc=f"Epoch {epoch + 1}/{NUM_EPOCHS}")):
+    for batch_idx, (sequence, attention_mask) in enumerate(tqdm(train_loader, desc=f"Epoch {epoch + 1}/{NUM_EPOCHS}")):
+        
+        # Move to device
         sequence = sequence.to(DEVICE)
+        attention_mask = attention_mask.to(DEVICE)
         
         # Prepare decoder input and output
         decoder_input = sequence[:, :-1]  # Decoder input should be shifted left relative to output
@@ -93,8 +86,11 @@ for epoch in range(NUM_EPOCHS):
     model.eval()
     total_val_loss = 0
     with torch.no_grad():
-        for sequence in val_loader:
+        for sequence, attention_mask in val_loader:
+
+            # Move to device
             sequence = sequence.to(DEVICE)
+            attention_mask = attention_mask.to(DEVICE)
             
             # Prepare target input and output
             decoder_input = sequence[:, :-1] # Decoder input should be shifted left relative to output

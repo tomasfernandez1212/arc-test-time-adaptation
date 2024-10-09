@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 import math
+from torch.nn.attention.flex_attention import flex_attention, create_block_mask
+from src.data.tokenizer import Encoding
 
 class MultiHeadAttention(nn.Module):
     def __init__(self, d_model, num_heads):
@@ -19,15 +21,20 @@ class MultiHeadAttention(nn.Module):
         self.W_v = nn.Linear(d_model, d_model) # Value transformation
         self.W_o = nn.Linear(d_model, d_model) # Output transformation
         
-    def scaled_dot_product_attention(self, Q, K, V):
-        # Calculate attention scores
-        attn_scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.d_k)
+    def scaled_dot_product_attention(self, Q, K, V, block_mask):
+        # Q, K, V shape: [batch_size, num_heads, seq_length, d_k]
         
-        # Softmax is applied to obtain attention probabilities
-        attn_probs = torch.softmax(attn_scores, dim=-1)
+        # Reshape for flex_attention
+        batch_size, num_heads, seq_length, d_k = Q.size()
+        Q = Q.view(batch_size * num_heads, seq_length, d_k)
+        K = K.view(batch_size * num_heads, seq_length, d_k)
+        V = V.view(batch_size * num_heads, seq_length, d_k)
         
-        # Multiply by values to obtain the final output
-        output = torch.matmul(attn_probs, V)
+        # Apply flex_attention
+        output = flex_attention(Q, K, V, block_mask=block_mask)
+        
+        # Reshape back to original shape
+        output = output.view(batch_size, num_heads, seq_length, d_k)
         return output
         
     def split_heads(self, x):
@@ -40,14 +47,14 @@ class MultiHeadAttention(nn.Module):
         batch_size, _, seq_length, d_k = x.size()
         return x.transpose(1, 2).contiguous().view(batch_size, seq_length, self.d_model)
         
-    def forward(self, Q, K, V):
+    def forward(self, Q, K, V, block_mask):
         # Apply linear transformations and split heads
         Q = self.split_heads(self.W_q(Q))
         K = self.split_heads(self.W_k(K))
         V = self.split_heads(self.W_v(V))
         
-        # Perform scaled dot-product attention
-        attn_output = self.scaled_dot_product_attention(Q, K, V)
+        # Perform attention with masking
+        attn_output = self.scaled_dot_product_attention(Q, K, V, block_mask)
         
         # Combine heads and apply output transformation
         output = self.W_o(self.combine_heads(attn_output))
@@ -101,8 +108,8 @@ class DecoderLayer(nn.Module):
         self.norm2 = nn.LayerNorm(d_model)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, tgt_mask):
-        attn_output = self.self_attn(x, x, x, tgt_mask)
+    def forward(self, x, block_mask):
+        attn_output = self.self_attn(x, x, x, block_mask)
         x = self.norm1(x + self.dropout(attn_output))
         ff_output = self.feed_forward(x)
         x = self.norm2(x + self.dropout(ff_output))
@@ -118,14 +125,72 @@ class Transformer(nn.Module):
         ])
         self.fc = nn.Linear(d_model, vocab_size)
         self.dropout = nn.Dropout(dropout)
-
+        self.num_heads = num_heads  # Store num_heads for later use
+        
     def forward(self, x):
+       
+        # Keep reference to the tokens (integers)
+        token_encodings = x  # Shape: [batch_size, seq_length]
+        
+        # Embed the tokens
         x = self.embedding(x)
         x = self.positional_encoding(x)
         x = self.dropout(x)
+        
+        batch_size, seq_length = x.size(0), x.size(1)
+       
+        # Identify the pair that each token belongs to.
+        pair_id = None # Placeholder
+        grid_id = None # Placeholder
+        row_id = None # Placeholder
+        
+        # Use to create the hierarchical mask function with token_encodings and last_grid_start_idx from outer score
+        def make_hierarchical_mask(token_encodings, last_grid_start_idx):
+            def hierarchical_mask(b, h, q_idx, kv_idx):
+                token_q = token_encodings[b, q_idx]
+                token_k = token_encodings[b, kv_idx]
+                
+                # Define token type sets
+                PIXEL_VALUES = set(range(Encoding.BLACK.value, Encoding.BURGUNDY.value + 1))
+                START_END_ROW = {Encoding.START_OF_ROW.value, Encoding.END_OF_ROW.value}
+                START_END_GRID = {Encoding.START_OF_GRID.value, Encoding.END_OF_GRID.value}
+                START_END_PAIR = {Encoding.START_OF_PAIR.value, Encoding.END_OF_PAIR.value}
+                START_END_SEQUENCE = {Encoding.START_OF_SEQUENCE.value, Encoding.END_OF_SEQUENCE.value}
+                
+                # Compute conditions
+                cond1 = (token_q in PIXEL_VALUES) and (token_k in START_END_ROW)
+                cond2 = (token_q in START_END_ROW) and (token_k in START_END_GRID)
+                cond3 = (token_q in START_END_GRID) and (token_k in START_END_PAIR)
+                cond4 = (token_q in START_END_PAIR) and (token_k in START_END_SEQUENCE)
+                
+                # Positions in the last grid
+                is_q_in_last_grid = q_idx >= last_grid_start_idx[b]
+                is_k_in_last_grid = kv_idx >= last_grid_start_idx[b]
+                
+                # Causal condition without using 'if'
+                causal_condition = (is_q_in_last_grid and is_k_in_last_grid and (q_idx >= kv_idx)) or \
+                                   (not is_q_in_last_grid or not is_k_in_last_grid)
+                
+                # Combine all conditions using logical OR
+                mask = cond1 or cond2 or cond3 or cond4 or causal_condition
+                
+                return mask
+
+            return hierarchical_mask
+
+        # Create the block mask
+        block_mask = create_block_mask(
+            make_hierarchical_mask(token_encodings, last_grid_start_idx),
+            B=batch_size,
+            H=self.num_heads,
+            Q_LEN=seq_length,
+            KV_LEN=seq_length,
+            BLOCK_SIZE=128,
+            device=x.device
+        )
 
         for layer in self.decoder_layers:
-            x = layer(x)
+            x = layer(x, block_mask)
 
         output = self.fc(x)
         return output

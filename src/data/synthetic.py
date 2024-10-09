@@ -8,11 +8,11 @@ class SyntheticTaskGenerator:
     def __init__(self, mirrored_pairs: bool = True):
         self.mirrored_pairs = mirrored_pairs
         self.grid_dim_min = 3
-        self.grid_dim_max = 30
-        self.grid_dim_mean = 6
+        self.grid_dim_max = 3 # 30
+        self.grid_dim_mean = 3 # 6
         self.num_train_pairs_min = 1
-        self.num_train_pairs_max = 10
-        self.num_train_pairs_mean = 3
+        self.num_train_pairs_max = 1 # 10
+        self.num_train_pairs_mean = 1 # 3
 
     def _generate_grid(self, rows: int, cols: int) -> Grid:
         return [[random.randint(0, 9) for _ in range(cols)] for _ in range(rows)]

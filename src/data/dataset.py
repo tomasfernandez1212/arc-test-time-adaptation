@@ -5,7 +5,7 @@ from enum import Enum
 import os
 from src.data.load import load_and_validate_data
 from src.data.synthetic import SyntheticTaskGenerator
-
+from typing import Tuple
 class Split(Enum):
     TRAIN = "training"
     EVAL = "evaluation"
@@ -32,7 +32,7 @@ class ARCDataset(Dataset):
         else: 
             raise ValueError(f"Invalid split: {self.split} for ARCDataset.")
 
-    def __getitem__(self, index):
+    def __getitem__(self, index) -> Tuple[torch.Tensor, torch.Tensor]:
 
         # Depending on the split, we either return a synthetic task or a real task 
         if self.split == Split.SYNTHETIC_MIRRORED or self.split == Split.SYNTHETIC_NON_MIRRORED:
@@ -41,10 +41,10 @@ class ARCDataset(Dataset):
             filename = self.filenames[index]
             task = load_and_validate_data(os.path.join(self.split_dir, filename))
         
-        encoded_sequence = self.task_encoder.encode_task(task)
-        encoded_sequence = torch.tensor(encoded_sequence, dtype=torch.long)
-        
-        return encoded_sequence
+        # Encode the task
+        encoded_sequence, attention = self.task_encoder.encode_task(task)
+
+        return encoded_sequence, attention
 
     def __len__(self):
         return self.num_tasks

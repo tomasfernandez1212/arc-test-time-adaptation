@@ -13,4 +13,6 @@ from src.data.dataset import ARCDataset, Split
 
 train_dataset = ARCDataset(split=Split.SYNTHETIC_MIRRORED)
 
-print(train_dataset[0])
+encoded_sequence, attention = train_dataset[0]
+print(encoded_sequence)
+print(attention)

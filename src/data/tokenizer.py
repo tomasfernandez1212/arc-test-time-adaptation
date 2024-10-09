@@ -1,7 +1,9 @@
 from src.data.schema import *
+from src.data.context import MAX_TOKENS_PER_TASK
 from enum import Enum
-from typing import List
+from typing import List, Tuple
 from collections import deque
+import torch
 
 class Token(Enum):
     PAD = "<pad>"
@@ -54,54 +56,188 @@ if set(Encoding.__members__.keys()) != set(Token.__members__.keys()):
     raise ValueError("Encoding and Token Enums must have the same keys.")
 
 class TaskEncoder:
-    def __init__(self, max_sequence_length: int = 19262):
+    """
+    Encodes a Task into a sequence of tokens and a boolean attention matrix.
+    """
+    def __init__(self, max_sequence_length: int = MAX_TOKENS_PER_TASK):
         self.max_sequence_length = max_sequence_length
 
-    def encode_task(self, task: Task) -> List[int]:
-        encoded_sequence = self.encode_sequence(task)
+    def encode_task(self, task: Task) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Entry point to encode a Task into a sequence of tokens and a boolean attention matrix.
+        """
+
+        encoded_sequence = deque()
+        attention = torch.zeros(self.max_sequence_length, self.max_sequence_length, dtype=torch.bool)
+
+        # Encode the sequence
+        self._encode_sequence(task, encoded_sequence, attention)
         
         # Pad sequence
-        encoded_sequence = list(self.pad_sequence(encoded_sequence))
+        self._pad_sequence(encoded_sequence)
         
-        return encoded_sequence
+        return torch.tensor(encoded_sequence, dtype=torch.long), attention
 
-    def pad_sequence(self, sequence: deque) -> deque:
-        padding_length = self.max_sequence_length - len(sequence)
+    def _pad_sequence(self, encoded_sequence: deque):
+        """
+        Pads the encoded sequence to the maximum sequence length.
+        """
+        padding_length = self.max_sequence_length - len(encoded_sequence)
         if padding_length > 0:
-            sequence.extend([Encoding.PAD.value] * padding_length)
-        return sequence
+            encoded_sequence.extend([Encoding.PAD.value] * padding_length)
 
-    def encode_sequence(self, task: Task) -> deque:
-        encodings = deque([Encoding.START_OF_SEQUENCE.value])
+    def _encode_sequence(self, task: Task, encoded_sequence: deque, attention: torch.Tensor):
+        """
+        Encodes the components of a Task into a sequence of encoding values and sets the attention matrix.
+        """
 
-        # Tokenize All Pairs in Train 
+        # Add - Start the sequence
+        encoded_sequence.append(Encoding.START_OF_SEQUENCE.value)
+        start_of_sequence_index = len(encoded_sequence) - 1
+        child_indices = deque()
+
+        # Delegate - Each Training Pair 
         for pair in task.train:
-            encodings.extend(self.encode_pair(pair))
+            child_indices.extend(self._encode_pair(pair, encoded_sequence, attention))
 
-        # Tokenize The Only Pair in Test
-        pair = task.test
-        encodings.extend(self.encode_pair(pair))
+        # Delegate - The Test Pair
+        child_indices.extend(self._encode_pair(task.test[0], encoded_sequence, attention, is_test=True))
 
-        encodings.append(Encoding.END_OF_SEQUENCE.value)
-        return encodings
-    
-    def encode_pair(self, pair: Pair) -> deque:
-        encodings = deque([Encoding.START_OF_PAIR.value])
-        encodings.extend(self.encode_grid(pair.input))
-        encodings.extend(self.encode_grid(pair.output))
-        encodings.append(Encoding.END_OF_PAIR.value)
-        return encodings
-            
-    def encode_grid(self, grid: Grid) -> deque:
-        encodings = deque([Encoding.START_OF_GRID.value])
+        # Add - End the sequence
+        encoded_sequence.append(Encoding.END_OF_SEQUENCE.value)
+        end_of_sequence_index = len(encoded_sequence) - 1
+
+        # Set Attention - Start & End of Sequence
+        attention[start_of_sequence_index][end_of_sequence_index] = True 
+        attention[end_of_sequence_index][start_of_sequence_index] = True 
+
+        # Set Attention - Parent to Children & Children to Parent
+        parent_indices = deque([start_of_sequence_index, end_of_sequence_index])
+        i_indices, j_indices = torch.meshgrid(
+            torch.tensor(parent_indices), 
+            torch.tensor(child_indices), 
+            indexing='ij'
+        )
+        attention[i_indices, j_indices] = True
+        attention[j_indices, i_indices] = True
+
+        # Set Attention - Self 
+        attention.diagonal()[:end_of_sequence_index+1] = True
+
+    def _encode_pair(self, pair: Pair, encoded_sequence: deque, attention: torch.Tensor, is_test: bool = False) -> deque:
+        """
+        Given a Pair, encodes the pair into encoded_sequence and returns a deque of the start and end indices of the pair.
+        """
+
+        # Add - Start of Pair
+        encoded_sequence.append(Encoding.START_OF_PAIR.value)
+        start_of_pair_index = len(encoded_sequence)-1
+        child_indices = deque()
+
+        # Delegate - The Input Grid
+        input_grid_indices = self._encode_grid(pair.input, encoded_sequence, attention)
+        child_indices.extend(input_grid_indices)
+
+        # Delegate - The Output Grid
+        ouput_grid_indices = self._encode_grid(pair.output, encoded_sequence, attention)
+        child_indices.extend(ouput_grid_indices)
+
+        # Add - End of Pair
+        encoded_sequence.append(Encoding.END_OF_PAIR.value)
+        end_of_pair_index = len(encoded_sequence)-1
+
+        # Set Attention - Start & End of Pair
+        attention[start_of_pair_index][end_of_pair_index] = True 
+        attention[end_of_pair_index][start_of_pair_index] = True 
+
+        # Set Attention - Parent to Children & Children to Parent
+        parent_indices = deque([start_of_pair_index, end_of_pair_index])
+        i_indices, j_indices = torch.meshgrid(
+            torch.tensor(parent_indices), 
+            torch.tensor(child_indices), 
+            indexing='ij'
+        )
+        attention[i_indices, j_indices] = True
+        attention[j_indices, i_indices] = True
+
+        # Set Attention - Causality for Output Grid on Test 
+        if is_test:
+            ouput_grid_start_index = ouput_grid_indices[0]
+            output_grid_end_index = ouput_grid_indices[1]
+            output_grid_size = output_grid_end_index-ouput_grid_start_index
+            triu_indices = torch.triu_indices(output_grid_size, output_grid_size, offset=1)
+            output_grid_triu_rows = triu_indices[0]+ouput_grid_start_index
+            output_grid_triu_cols = triu_indices[1]+ouput_grid_start_index
+            attention[output_grid_triu_rows, output_grid_triu_cols] = False
+
+        return parent_indices
+
+
+    def _encode_grid(self, grid: Grid, encoded_sequence: deque, attention: torch.Tensor) -> deque:
+        """
+        Given a Grid, encodes the grid into encoded_sequence and returns a deque of the start and end indices of the grid.
+        """
+
+        # Add - Start of Grid
+        encoded_sequence.append(Encoding.START_OF_GRID.value)
+        start_of_grid_index = len(encoded_sequence)-1
+
+        # Delegate - Each Row
+        child_indices = deque()
         for row in grid:
-            encodings.extend(self.encode_row(row))
-        encodings.append(Encoding.END_OF_GRID.value)
-        return encodings
+            child_indices.extend(self._encode_row(row, encoded_sequence, attention))
 
-    def encode_row(self, row: Row) -> deque:
-        encodings = deque([Encoding.START_OF_ROW.value])
-        for cell in row:
-            encodings.append(cell + Encoding.BLACK.value) # Add the first color's value since encodings are shifted due to other tokens
-        encodings.append(Encoding.END_OF_ROW.value)
-        return encodings
+        # Add - End of Grid
+        encoded_sequence.append(Encoding.END_OF_GRID.value)
+        end_of_grid_index = len(encoded_sequence)-1
+
+        # Set Attention - Start & End of Grid 
+        attention[start_of_grid_index][end_of_grid_index] = True
+        attention[end_of_grid_index][start_of_grid_index] = True
+
+        # Set Attention - Parent to Children & Children To Parent
+        parent_indices = deque([start_of_grid_index, end_of_grid_index])
+        i_indices, j_indices = torch.meshgrid(
+            torch.tensor(parent_indices), 
+            torch.tensor(child_indices), 
+            indexing='ij'
+        )
+        attention[i_indices, j_indices] = True
+        attention[j_indices, i_indices] = True
+
+        return parent_indices
+
+    def _encode_row(self, row: Row, encoded_sequence: deque, attention: torch.Tensor) -> deque:
+        """
+        Given a Row, encodes the row into encoded_sequence and returns a deque of the start and end indices of the row.
+        """
+
+        # Add - Start of Row
+        encoded_sequence.append(Encoding.START_OF_ROW.value)
+        start_of_row_index = len(encoded_sequence)-1
+
+        # Delegate - Each Pixel
+        child_indices = []
+        for i, pixel in enumerate(row):
+            encoded_sequence.append(pixel + Encoding.BLACK.value) # Add the first color's value since encodings are shifted due to other tokens
+            child_indices.append(start_of_row_index+i+1)
+
+        # Add - End of Row
+        encoded_sequence.append(Encoding.END_OF_ROW.value)
+        end_of_row_index = len(encoded_sequence)-1
+
+         # Set Attention - Start & End of Row 
+        attention[start_of_row_index][end_of_row_index] = True 
+        attention[end_of_row_index][start_of_row_index] = True 
+
+        # Set Attention - Parent to Children & Children to Parent
+        parent_indices = deque([start_of_row_index, end_of_row_index])
+        row_idx, col_idx = torch.meshgrid(
+            torch.tensor(parent_indices), 
+            torch.tensor(child_indices), 
+            indexing='ij'
+        )
+        attention[row_idx, col_idx] = True
+        attention[col_idx, row_idx] = True
+
+        return parent_indices
