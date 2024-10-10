@@ -13,7 +13,7 @@ D_FF = 1 * D_MODEL  # Feed Forward Hidden Layer Dimensionality
 DROPOUT = 0.1  # Dropout probability
 
 # Training parameters
-BATCH_SIZE = 1
+BATCH_SIZE = 2
 NUM_EPOCHS = 10
 LEARNING_RATE = 1e-4
 

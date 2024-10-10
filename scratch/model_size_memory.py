@@ -8,45 +8,51 @@ else:
 """
 This script is used to estimate the memory usage of the model. It is not used in the training or evaluation of the model. 
 """
-
-from src.model.core import Transformer
+import os
 import torch
-
-src_possible_tokens = 10 # Number of Colors 
-tgt_possible_tokens = 10 # Number of Colors 
-d_model = 6 # Embeddings Dimension - Should be divisible by 2 for positional encoding. Using LLMs as a point of comparison, this should be less than number of colors/tokens.
-num_heads = 3 # Number of attention heads. d_model must be divisible by num_heads. 
-num_layers = 6 # Number of encoder/decoder layers. 
-d_ff = 4*d_model # Feed Forward Hidden Layer Dimensionality 
-dropout = 0.1 # Dropout probability
-batch_size = 4 # Batch size
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-# Define Example Data Dimensions - 2x2 grids, 2 input pairs, 1 output to solve: 4x2x2+4 = 20
-max_pixels_in_row = 2 # Actual is 30 
-max_pixels_in_col = 2 # Actual is 30
-max_pairs_in_sample = 3 # Actual is 10
-max_tokens_per_row = 2+max_pixels_in_row # Start and End of Row
-max_tokens_per_grid = 2+max_tokens_per_row*max_pixels_in_col # Start and End of Grid
-max_tokens_per_sample = 2+max_tokens_per_grid*max_pairs_in_sample # Actual is 9622
+from src.data.context import MAX_TOKENS_PER_TASK
+from src.model.core import Transformer
+from src.data.dataset import ARCDataset, Split
+import src.model.config as config
+from torch.utils.data import DataLoader
 
 
-# Initialize Model
-transformer = Transformer(src_possible_tokens, tgt_possible_tokens, max_tokens_per_sample, d_model, num_heads, num_layers, d_ff, dropout)
-transformer.to(device)
+# Model parameters from config
+DEVICE = config.DEVICE
+VOCAB_SIZE = config.VOCAB_SIZE
+D_MODEL = config.D_MODEL
+NUM_HEADS = config.NUM_HEADS
+NUM_LAYERS = config.NUM_LAYERS
+D_FF = config.D_FF
+DROPOUT = config.DROPOUT
+BATCH_SIZE = config.BATCH_SIZE
 
-# Generate Fake Data 
-src_data = torch.randint(1, src_possible_tokens, (batch_size, max_tokens_per_sample)).to(device)  # (batch_size, seq_length)
-tgt_data = torch.randint(1, tgt_possible_tokens, (batch_size, max_tokens_per_sample)).to(device)  # (batch_size, seq_length)
+# Initialize the model
+model = Transformer(VOCAB_SIZE, MAX_TOKENS_PER_TASK, D_MODEL, NUM_HEADS, NUM_LAYERS, D_FF, DROPOUT, DEVICE)
+model.to(DEVICE)
+
+# Load the Dataset
+train_dataset = ARCDataset(split=Split.SYNTHETIC_MIRRORED)
+train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+
+# Sample batch
+sequence, attention_mask, start_of_test_output_grid = next(iter(train_loader))
+sequence = sequence.to(DEVICE)
+attention_mask = attention_mask.to(DEVICE)
+print(sequence.shape)
+
+# Prepare
+decoder_input = sequence[:, :-1]
+attention_mask = attention_mask[:, :-1, :-1]  # Adjust mask to match decoder input
 
 # Run inference
-transformer.eval()
-output = transformer(src_data, tgt_data)
-print(output)
+model.eval()
+decoder_output = model(decoder_input, attention_mask)
+print(decoder_output.shape)
 
 # Print maximum memory used
 if torch.cuda.is_available():
-    max_memory = torch.cuda.max_memory_allocated(device)
+    max_memory = torch.cuda.max_memory_allocated(DEVICE)
     print(f"Maximum memory used: {max_memory / (1024 ** 3)} GB")
 else:
     print("CUDA is not available. Can't estimate memory usage.")
