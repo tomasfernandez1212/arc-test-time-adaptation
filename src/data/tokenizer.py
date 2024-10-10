@@ -62,21 +62,21 @@ class TaskEncoder:
     def __init__(self, max_sequence_length: int = MAX_TOKENS_PER_TASK):
         self.max_sequence_length = max_sequence_length
 
-    def encode_task(self, task: Task) -> Tuple[torch.Tensor, torch.Tensor]:
+    def encode_task(self, task: Task) -> Tuple[torch.Tensor, torch.Tensor, int]:
         """
         Entry point to encode a Task into a sequence of tokens and a boolean attention matrix.
         """
 
         encoded_sequence = deque()
-        attention = torch.zeros(self.max_sequence_length, self.max_sequence_length, dtype=torch.bool)
+        attention_mask = torch.zeros(self.max_sequence_length, self.max_sequence_length, dtype=torch.bool)
 
         # Encode the sequence
-        self._encode_sequence(task, encoded_sequence, attention)
+        start_of_test_output_grid = self._encode_sequence(task, encoded_sequence, attention_mask)
         
         # Pad sequence
         self._pad_sequence(encoded_sequence)
         
-        return torch.tensor(encoded_sequence, dtype=torch.long), attention
+        return torch.tensor(encoded_sequence, dtype=torch.long), attention_mask, start_of_test_output_grid
 
     def _pad_sequence(self, encoded_sequence: deque):
         """
@@ -86,9 +86,9 @@ class TaskEncoder:
         if padding_length > 0:
             encoded_sequence.extend([Encoding.PAD.value] * padding_length)
 
-    def _encode_sequence(self, task: Task, encoded_sequence: deque, attention: torch.Tensor):
+    def _encode_sequence(self, task: Task, encoded_sequence: deque, attention: torch.Tensor) -> int:
         """
-        Encodes the components of a Task into a sequence of encoding values and sets the attention matrix.
+        Encodes the components of a Task into a sequence of encoding values and sets the attention matrix. Returns the start index of the test's output grid.
         """
 
         # Add - Start the sequence
@@ -102,7 +102,7 @@ class TaskEncoder:
             child_indices.extend(child_indices_from_pair)
 
         # Delegate - The Test Pair
-        child_indices_from_pair, output_grid_start_index = self._encode_pair(task.test[0], encoded_sequence, attention)
+        child_indices_from_pair, start_of_test_output_grid = self._encode_pair(task.test[0], encoded_sequence, attention)
         child_indices.extend(child_indices_from_pair)
 
         # Add - End the sequence
@@ -127,10 +127,10 @@ class TaskEncoder:
 
         # Set Attention - Causality for Test Output Grid - Negate Non-Prefix Indices
         row_indices, col_indices = torch.triu_indices(attention.size(0), attention.size(1), offset=1) # Standard Upper Triangular Indices
-        mask = col_indices >= output_grid_start_index # Only Keep Columns From Start of Output Grid
+        mask = col_indices >= start_of_test_output_grid # Only Keep Columns From Start of Output Grid
         attention[row_indices[mask], col_indices[mask]] = False # Negate These Indices
 
-        return parent_indices
+        return start_of_test_output_grid
 
 
     def _encode_pair(self, pair: Pair, encoded_sequence: deque, attention: torch.Tensor) -> Tuple[deque, int]:

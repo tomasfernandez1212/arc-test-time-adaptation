@@ -47,18 +47,19 @@ writer = SummaryWriter(log_dir=LOGS_DIR)
 for epoch in range(NUM_EPOCHS):
     model.train()
     total_loss = 0
-    for batch_idx, (sequence, attention_mask) in enumerate(tqdm(train_loader, desc=f"Epoch {epoch + 1}/{NUM_EPOCHS}")):
+    for batch_idx, (sequence, attention_mask, start_of_test_output_grid) in enumerate(tqdm(train_loader, desc=f"Epoch {epoch + 1}/{NUM_EPOCHS}")):
         
         # Move to device
         sequence = sequence.to(DEVICE)
         attention_mask = attention_mask.to(DEVICE)
+        start_of_test_output_grid = start_of_test_output_grid.to(DEVICE)
         
         # Prepare decoder input and output
         decoder_input = sequence[:, :-1]  # Decoder input should be shifted left relative to output
         decoder_target = sequence[:, 1:]  # Decoder output should be shifted right relative to input
 
         # Prepare the attention mask
-        attention_mask = attention_mask[:, :-1, :-1].to(DEVICE) # Remove the last token from the attention mask to match the decoder input
+        attention_mask = attention_mask[:, :-1, :-1] # Remove the last token from the attention mask to match the decoder input
 
         # Forward pass
         decoder_output = model(decoder_input, attention_mask)

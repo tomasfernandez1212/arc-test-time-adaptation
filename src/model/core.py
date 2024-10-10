@@ -132,7 +132,15 @@ class Transformer(nn.Module):
         self.dropout = nn.Dropout(dropout)
         
     def forward(self, x, attention_mask):
-       
+
+        # Raise an error if the input tensor is not of the correct shape
+        if x.ndim != 2:
+            raise ValueError(f"Expected input tensor to have 2 dimensions, but got {x.ndim}. Expected shape: (batch_size, sequence_length)")
+        
+        # Raise error if the attention mask is not of the correct shape
+        if attention_mask.ndim != 3:
+            raise ValueError(f"Expected attention mask tensor to have 3 dimensions, but got {attention_mask.ndim}. Expected shape: (batch_size, sequence_length, sequence_length)")
+        
         # Embed the tokens
         x = self.embedding(x)
         x = self.positional_encoding(x)
@@ -178,3 +186,33 @@ class Transformer(nn.Module):
             device=self.device
         )
         return block_mask
+        
+
+    def autoregressive_inference(self, output_sequence: torch.Tensor, attention_mask: torch.Tensor, start_of_test_output_grid: int) -> torch.Tensor:
+        """
+        Performs autoregressive inference on the model for a single task starting from the start of the test's output grid.
+
+        This method is intended for test time inference. For training, use the standard forward method.
+        """
+
+        # Copy and remove the test's output grid from the encoded sequence
+        output_sequence = output_sequence[:start_of_test_output_grid].clone()
+        last_token = output_sequence[-1].item()
+
+        # Reshape - Single Sequence Unsqueeze Since Model Expects a Batch 
+        output_sequence = output_sequence.unsqueeze(0)
+        attention_mask = attention_mask.unsqueeze(0)[:,:-1,:-1]
+
+        with torch.no_grad():
+            while last_token != Encoding.END_OF_SEQUENCE.value:
+
+                # Forward pass
+                pred_scores = self.forward(output_sequence, attention_mask)
+
+                # Sample the last token from the output (Using Max for Now)
+                last_token = pred_scores[0, -1, :].argmax().item()
+
+                # Append the last token to the sequence
+                output_sequence = torch.cat([output_sequence, torch.tensor([[last_token]])], dim=1)
+
+        return output_sequence

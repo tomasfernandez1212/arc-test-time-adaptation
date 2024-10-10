@@ -32,7 +32,7 @@ class ARCDataset(Dataset):
         else: 
             raise ValueError(f"Invalid split: {self.split} for ARCDataset.")
 
-    def __getitem__(self, index) -> Tuple[torch.Tensor, torch.Tensor]:
+    def __getitem__(self, index) -> Tuple[torch.Tensor, torch.Tensor, int]:
 
         # Depending on the split, we either return a synthetic task or a real task 
         if self.split == Split.SYNTHETIC_MIRRORED or self.split == Split.SYNTHETIC_NON_MIRRORED:
@@ -42,9 +42,9 @@ class ARCDataset(Dataset):
             task = load_and_validate_data(os.path.join(self.split_dir, filename))
         
         # Encode the task
-        encoded_sequence, attention_mask = self.task_encoder.encode_task(task)
+        encoded_sequence, attention_mask, start_of_test_output_grid = self.task_encoder.encode_task(task)
 
-        return encoded_sequence, attention_mask
+        return encoded_sequence, attention_mask, start_of_test_output_grid
 
     def __len__(self):
         return self.num_tasks
