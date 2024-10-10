@@ -43,4 +43,4 @@ class SyntheticTaskGenerator:
         test_pair = self._generate_pair()
 
 
-        return Task(train=list(train_pairs), test=test_pair)
+        return Task(train=list(train_pairs), test=[test_pair])

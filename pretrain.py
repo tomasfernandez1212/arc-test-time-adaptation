@@ -14,9 +14,9 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Define Model Parameters
 VOCAB_SIZE = len(Token)  # Number of Colors + Other Tokens
-D_MODEL = 2  # Embeddings Dimension - Should be divisible by 2 for positional encoding. Example: 6
-NUM_HEADS = 1  # Number of attention heads. D_MODEL must be divisible by NUM_HEADS. Example: 3
-NUM_LAYERS = 1  # Number of decoder layers. Example: 5
+D_MODEL = 2**2  # Embeddings Dimension - Should a power of 2 for flex attention.
+NUM_HEADS = 2  # Number of attention heads. D_MODEL must be divisible by NUM_HEADS.
+NUM_LAYERS = 1  # Number of decoder layers.
 D_FF = 1 * D_MODEL  # Feed Forward Hidden Layer Dimensionality
 
 # Define Training Parameters
@@ -26,7 +26,7 @@ LEARNING_RATE = 1e-4
 DROPOUT = 0.1  # Dropout probability
 
 # Initialize Model, Loss Function, and Optimizer
-model = Transformer(VOCAB_SIZE, MAX_TOKENS_PER_TASK, D_MODEL, NUM_HEADS, NUM_LAYERS, D_FF, DROPOUT)
+model = Transformer(VOCAB_SIZE, MAX_TOKENS_PER_TASK, D_MODEL, NUM_HEADS, NUM_LAYERS, D_FF, DROPOUT, DEVICE)
 model.to(DEVICE)
 criterion = nn.CrossEntropyLoss(ignore_index=Encoding.PAD.value)
 optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)

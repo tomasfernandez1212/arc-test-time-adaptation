@@ -24,17 +24,9 @@ class MultiHeadAttention(nn.Module):
     def scaled_dot_product_attention(self, Q, K, V, block_mask):
         # Q, K, V shape: [batch_size, num_heads, seq_length, d_k]
         
-        # Reshape for flex_attention
-        batch_size, num_heads, seq_length, d_k = Q.size()
-        Q = Q.view(batch_size * num_heads, seq_length, d_k)
-        K = K.view(batch_size * num_heads, seq_length, d_k)
-        V = V.view(batch_size * num_heads, seq_length, d_k)
-        
         # Apply flex_attention
         output = flex_attention(Q, K, V, block_mask=block_mask)
         
-        # Reshape back to original shape
-        output = output.view(batch_size, num_heads, seq_length, d_k)
         return output
         
     def split_heads(self, x):
@@ -48,16 +40,23 @@ class MultiHeadAttention(nn.Module):
         return x.transpose(1, 2).contiguous().view(batch_size, seq_length, self.d_model)
         
     def forward(self, Q, K, V, block_mask):
-        # Apply linear transformations and split heads
-        Q = self.split_heads(self.W_q(Q))
-        K = self.split_heads(self.W_k(K))
-        V = self.split_heads(self.W_v(V))
+
+        # Split Heads
+        Q = self.W_q(Q)
+        K = self.W_k(K)
+        V = self.W_v(V)
+
+        # Apply linear transformations
+        Q = self.split_heads(Q)
+        K = self.split_heads(K)
+        V = self.split_heads(V)
         
         # Perform attention with masking
         attn_output = self.scaled_dot_product_attention(Q, K, V, block_mask)
         
         # Combine heads and apply output transformation
-        output = self.W_o(self.combine_heads(attn_output))
+        combined_output = self.combine_heads(attn_output)
+        output = self.W_o(combined_output)
         return output
     
 class PositionWiseFeedForward(nn.Module):
@@ -116,8 +115,14 @@ class DecoderLayer(nn.Module):
         return x
     
 class Transformer(nn.Module):
-    def __init__(self, vocab_size, max_seq_length, d_model, num_heads, num_layers, d_ff, dropout):
+    def __init__(self, vocab_size, max_seq_length, d_model, num_heads, num_layers, d_ff, dropout, device):
         super(Transformer, self).__init__()
+
+        # Attach
+        self.num_heads = num_heads  
+        self.device = device
+
+        # Initialize Layers
         self.embedding = nn.Embedding(vocab_size, d_model)
         self.positional_encoding = PositionalEncoding(d_model, max_seq_length)
         self.decoder_layers = nn.ModuleList([
@@ -125,7 +130,6 @@ class Transformer(nn.Module):
         ])
         self.fc = nn.Linear(d_model, vocab_size)
         self.dropout = nn.Dropout(dropout)
-        self.num_heads = num_heads  # Store num_heads for later use
         
     def forward(self, x, attention_mask):
        
@@ -143,7 +147,7 @@ class Transformer(nn.Module):
 
         # Pass Through The Final Linear Layer
         output = self.fc(x)
-        
+
         return output
     
 
@@ -170,6 +174,7 @@ class Transformer(nn.Module):
             H=self.num_heads,
             Q_LEN=seq_len,
             KV_LEN=seq_len,
-            BLOCK_SIZE=block_size
+            BLOCK_SIZE=block_size,
+            device=self.device
         )
         return block_mask
