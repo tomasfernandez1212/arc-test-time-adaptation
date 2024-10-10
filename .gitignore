@@ -1,6 +1,9 @@
 # Ignore Scratch Files
 scratch.py
 
+# Ignore Checkpoints
+checkpoints/
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

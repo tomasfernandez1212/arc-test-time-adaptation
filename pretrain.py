@@ -5,25 +5,27 @@ from src.data.context import MAX_TOKENS_PER_TASK
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from src.model.core import Transformer
-from src.data.tokenizer import Token, Encoding
+from src.data.tokenizer import Encoding
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.tensorboard.writer import SummaryWriter  
+import src.model.config as config
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# Device configuration
+DEVICE = config.DEVICE
 
-# Define Model Parameters
-VOCAB_SIZE = len(Token)  # Number of Colors + Other Tokens
-D_MODEL = 2**2  # Embeddings Dimension - Should a power of 2 for flex attention.
-NUM_HEADS = 2  # Number of attention heads. D_MODEL must be divisible by NUM_HEADS.
-NUM_LAYERS = 1  # Number of decoder layers.
-D_FF = 1 * D_MODEL  # Feed Forward Hidden Layer Dimensionality
+# Model parameters from config
+VOCAB_SIZE = config.VOCAB_SIZE
+D_MODEL = config.D_MODEL
+NUM_HEADS = config.NUM_HEADS
+NUM_LAYERS = config.NUM_LAYERS
+D_FF = config.D_FF
+DROPOUT = config.DROPOUT
 
-# Define Training Parameters
-BATCH_SIZE = 1  # Batch size
-NUM_EPOCHS = 10  # Number of epochs
-LEARNING_RATE = 1e-4
-DROPOUT = 0.1  # Dropout probability
+# Training parameters from config
+BATCH_SIZE = config.BATCH_SIZE
+NUM_EPOCHS = config.NUM_EPOCHS
+LEARNING_RATE = config.LEARNING_RATE
 
 # Initialize Model, Loss Function, and Optimizer
 model = Transformer(VOCAB_SIZE, MAX_TOKENS_PER_TASK, D_MODEL, NUM_HEADS, NUM_LAYERS, D_FF, DROPOUT, DEVICE)
@@ -38,9 +40,10 @@ val_dataset = ARCDataset(split=Split.SYNTHETIC_MIRRORED)
 val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
 # Initialize TensorBoard writer
-LOGS_DIR = "logs/pretrain"
-if not os.path.exists(LOGS_DIR):
-    os.makedirs(LOGS_DIR)
+LOGS_DIR = config.LOGS_DIR
+CHECKPOINT_DIR = config.CHECKPOINT_DIR
+os.makedirs(LOGS_DIR, exist_ok=True)
+os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 writer = SummaryWriter(log_dir=LOGS_DIR)
 
 # Training loop
@@ -59,7 +62,7 @@ for epoch in range(NUM_EPOCHS):
         decoder_target = sequence[:, 1:]  # Decoder output should be shifted right relative to input
 
         # Prepare the attention mask
-        attention_mask = attention_mask[:, :-1, :-1] # Remove the last token from the attention mask to match the decoder input
+        attention_mask = attention_mask[:, :-1, :-1]  # Adjust mask to match decoder input
 
         # Forward pass
         decoder_output = model(decoder_input, attention_mask)
@@ -115,6 +118,16 @@ for epoch in range(NUM_EPOCHS):
     avg_val_loss = total_val_loss / len(val_loader)
     writer.add_scalar('Loss/val', avg_val_loss, epoch)  
     print(f"Epoch [{epoch + 1}/{NUM_EPOCHS}], Validation Loss: {avg_val_loss:.4f}")
+
+    # Save checkpoint at the end of each epoch
+    checkpoint_path = os.path.join(CHECKPOINT_DIR, f"model_epoch_{epoch + 1}.pth")
+    torch.save({
+        'epoch': epoch + 1,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'loss': avg_val_loss,
+    }, checkpoint_path)
+    print(f"Saved checkpoint: {checkpoint_path}")
 
 print("Training complete.")
 writer.close()  # Close the TensorBoard writer
