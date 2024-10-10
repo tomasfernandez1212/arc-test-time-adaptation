@@ -127,70 +127,49 @@ class Transformer(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.num_heads = num_heads  # Store num_heads for later use
         
-    def forward(self, x):
+    def forward(self, x, attention_mask):
        
-        # Keep reference to the tokens (integers)
-        token_encodings = x  # Shape: [batch_size, seq_length]
-        
         # Embed the tokens
         x = self.embedding(x)
         x = self.positional_encoding(x)
         x = self.dropout(x)
-        
-        batch_size, seq_length = x.size(0), x.size(1)
-       
-        # Identify the pair that each token belongs to.
-        pair_id = None # Placeholder
-        grid_id = None # Placeholder
-        row_id = None # Placeholder
-        
-        # Use to create the hierarchical mask function with token_encodings and last_grid_start_idx from outer score
-        def make_hierarchical_mask(token_encodings, last_grid_start_idx):
-            def hierarchical_mask(b, h, q_idx, kv_idx):
-                token_q = token_encodings[b, q_idx]
-                token_k = token_encodings[b, kv_idx]
-                
-                # Define token type sets
-                PIXEL_VALUES = set(range(Encoding.BLACK.value, Encoding.BURGUNDY.value + 1))
-                START_END_ROW = {Encoding.START_OF_ROW.value, Encoding.END_OF_ROW.value}
-                START_END_GRID = {Encoding.START_OF_GRID.value, Encoding.END_OF_GRID.value}
-                START_END_PAIR = {Encoding.START_OF_PAIR.value, Encoding.END_OF_PAIR.value}
-                START_END_SEQUENCE = {Encoding.START_OF_SEQUENCE.value, Encoding.END_OF_SEQUENCE.value}
-                
-                # Compute conditions
-                cond1 = (token_q in PIXEL_VALUES) and (token_k in START_END_ROW)
-                cond2 = (token_q in START_END_ROW) and (token_k in START_END_GRID)
-                cond3 = (token_q in START_END_GRID) and (token_k in START_END_PAIR)
-                cond4 = (token_q in START_END_PAIR) and (token_k in START_END_SEQUENCE)
-                
-                # Positions in the last grid
-                is_q_in_last_grid = q_idx >= last_grid_start_idx[b]
-                is_k_in_last_grid = kv_idx >= last_grid_start_idx[b]
-                
-                # Causal condition without using 'if'
-                causal_condition = (is_q_in_last_grid and is_k_in_last_grid and (q_idx >= kv_idx)) or \
-                                   (not is_q_in_last_grid or not is_k_in_last_grid)
-                
-                # Combine all conditions using logical OR
-                mask = cond1 or cond2 or cond3 or cond4 or causal_condition
-                
-                return mask
 
-            return hierarchical_mask
+        # Create a flex attention block mask based on this attention mask for this specific batch
+        block_mask = self.create_flex_block_mask(attention_mask)
 
-        # Create the block mask
-        block_mask = create_block_mask(
-            make_hierarchical_mask(token_encodings, last_grid_start_idx),
-            B=batch_size,
-            H=self.num_heads,
-            Q_LEN=seq_length,
-            KV_LEN=seq_length,
-            BLOCK_SIZE=128,
-            device=x.device
-        )
-
+        # Pass Through Each Decoder Layer
         for layer in self.decoder_layers:
             x = layer(x, block_mask)
 
+        # Pass Through The Final Linear Layer
         output = self.fc(x)
+        
         return output
+    
+
+    def create_flex_block_mask(self, attention_mask, block_size=128):
+        """
+        Creates a BlockMask for FlexAttention based on the provided attention mask.
+
+        Args:
+            attention_mask (torch.Tensor): Boolean tensor of shape [batch_size, seq_len, seq_len].
+            block_size (int): Size of the blocks to partition the attention mask.
+
+        Returns:
+            BlockMask: The created BlockMask object.
+        """
+        batch_size, seq_len, _ = attention_mask.shape
+
+        def mask_mod(b, h, q_idx, kv_idx):
+            return attention_mask[b, q_idx, kv_idx]
+
+        # Create BlockMask
+        block_mask = create_block_mask(
+            mask_mod=mask_mod,
+            B=batch_size,
+            H=self.num_heads,
+            Q_LEN=seq_len,
+            KV_LEN=seq_len,
+            BLOCK_SIZE=block_size
+        )
+        return block_mask

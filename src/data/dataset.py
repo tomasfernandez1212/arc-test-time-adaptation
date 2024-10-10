@@ -42,9 +42,9 @@ class ARCDataset(Dataset):
             task = load_and_validate_data(os.path.join(self.split_dir, filename))
         
         # Encode the task
-        encoded_sequence, attention = self.task_encoder.encode_task(task)
+        encoded_sequence, attention_mask = self.task_encoder.encode_task(task)
 
-        return encoded_sequence, attention
+        return encoded_sequence, attention_mask
 
     def __len__(self):
         return self.num_tasks

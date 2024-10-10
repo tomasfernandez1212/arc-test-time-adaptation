@@ -57,8 +57,11 @@ for epoch in range(NUM_EPOCHS):
         decoder_input = sequence[:, :-1]  # Decoder input should be shifted left relative to output
         decoder_target = sequence[:, 1:]  # Decoder output should be shifted right relative to input
 
+        # Prepare the attention mask
+        attention_mask = attention_mask[:, :-1, :-1].to(DEVICE) # Remove the last token from the attention mask to match the decoder input
+
         # Forward pass
-        decoder_output = model(decoder_input)
+        decoder_output = model(decoder_input, attention_mask)
         
         # Reshape output and target for loss computation
         decoder_output = decoder_output.view(-1, VOCAB_SIZE)
@@ -97,7 +100,7 @@ for epoch in range(NUM_EPOCHS):
             decoder_target = sequence[:, 1:] # Decoder output should be shifted right relative to input
 
             # Forward pass
-            decoder_output = model(decoder_input)
+            decoder_output = model(decoder_input, attention_mask)
             
             # Reshape output and target for loss computation
             decoder_output = decoder_output.view(-1, VOCAB_SIZE)
