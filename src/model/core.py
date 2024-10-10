@@ -5,7 +5,7 @@ from torch.nn.attention.flex_attention import flex_attention, create_block_mask
 from src.data.tokenizer import Encoding
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, d_model, num_heads):
+    def __init__(self, d_model, num_heads, attention_type='flex'):
         super(MultiHeadAttention, self).__init__()
         # Ensure that the model dimension (d_model) is divisible by the number of heads
         assert d_model % num_heads == 0, "d_model must be divisible by num_heads"
@@ -21,38 +21,67 @@ class MultiHeadAttention(nn.Module):
         self.W_v = nn.Linear(d_model, d_model) # Value transformation
         self.W_o = nn.Linear(d_model, d_model) # Output transformation
         
-    def scaled_dot_product_attention(self, Q, K, V, block_mask):
+        # Store the attention type
+        self.attention_type = attention_type
+
+    def scaled_dot_product_attention(self, Q, K, V, block_mask=None, attention_mask=None):
         # Q, K, V shape: [batch_size, num_heads, seq_length, d_k]
-        
-        # Apply flex_attention
-        output = flex_attention(Q, K, V, block_mask=block_mask)
-        
+        if self.attention_type == 'flex':
+            # Apply flex_attention
+            output = flex_attention(Q, K, V, block_mask=block_mask)
+        elif self.attention_type == 'scaled_dot_product':
+            # Use PyTorch's scaled_dot_product_attention
+            # Adjust shapes for scaled_dot_product_attention
+            # Combine batch and num_heads dimensions
+            B, H, S, D = Q.shape
+            Q = Q.reshape(B * H, S, D)
+            K = K.reshape(B * H, S, D)
+            V = V.reshape(B * H, S, D)
+            
+            # Adjust attention_mask shape
+            if attention_mask is not None:
+                # attention_mask shape: [batch_size, seq_length, seq_length]
+                # Expand to [batch_size * num_heads, seq_length, seq_length]
+                expanded_attention_mask = attention_mask.unsqueeze(1).repeat(1, H, 1, 1)
+                expanded_attention_mask = expanded_attention_mask.reshape(B * H, S, S)
+            else:
+                expanded_attention_mask = None
+
+            # Apply scaled_dot_product_attention
+            # Note: PyTorch expects attn_mask where True indicates positions **not to attend to**.
+            # If your attention_mask is the opposite, invert it.
+            output = nn.functional.scaled_dot_product_attention(
+                Q, K, V, attn_mask=expanded_attention_mask, dropout_p=0.0, is_causal=False
+            )
+            # Reshape back to [batch_size, num_heads, seq_length, d_k]
+            output = output.reshape(B, H, S, D)
+        else:
+            raise ValueError(f"Unsupported attention_type: {self.attention_type}")
         return output
-        
+            
     def split_heads(self, x):
         # Reshape the input to have num_heads for multi-head attention
         batch_size, seq_length, d_model = x.size()
         return x.view(batch_size, seq_length, self.num_heads, self.d_k).transpose(1, 2)
-        
+            
     def combine_heads(self, x):
         # Combine the multiple heads back to original shape
-        batch_size, _, seq_length, d_k = x.size()
+        batch_size, num_heads, seq_length, d_k = x.size()
         return x.transpose(1, 2).contiguous().view(batch_size, seq_length, self.d_model)
-        
-    def forward(self, Q, K, V, block_mask):
-
-        # Split Heads
+            
+    def forward(self, Q, K, V, block_mask=None, attention_mask=None):
+        # Linear transformations
         Q = self.W_q(Q)
         K = self.W_k(K)
         V = self.W_v(V)
 
-        # Apply linear transformations
+        # Split Heads
         Q = self.split_heads(Q)
         K = self.split_heads(K)
         V = self.split_heads(V)
         
-        # Perform attention with masking
-        attn_output = self.scaled_dot_product_attention(Q, K, V, block_mask)
+        # Perform attention
+        attn_output = self.scaled_dot_product_attention(Q, K, V, block_mask=block_mask, attention_mask=attention_mask)
         
         # Combine heads and apply output transformation
         combined_output = self.combine_heads(attn_output)
@@ -99,40 +128,40 @@ class PositionalEncoding(nn.Module):
         return x
     
 class DecoderLayer(nn.Module):
-    def __init__(self, d_model, num_heads, d_ff, dropout):
+    def __init__(self, d_model, num_heads, d_ff, dropout, attention_type='flex'):
         super(DecoderLayer, self).__init__()
-        self.self_attn = MultiHeadAttention(d_model, num_heads)
+        self.self_attn = MultiHeadAttention(d_model, num_heads, attention_type=attention_type)
         self.feed_forward = PositionWiseFeedForward(d_model, d_ff)
         self.norm1 = nn.LayerNorm(d_model)
         self.norm2 = nn.LayerNorm(d_model)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, block_mask):
-        attn_output = self.self_attn(x, x, x, block_mask)
+    def forward(self, x, block_mask=None, attention_mask=None):
+        attn_output = self.self_attn(x, x, x, block_mask=block_mask, attention_mask=attention_mask)
         x = self.norm1(x + self.dropout(attn_output))
         ff_output = self.feed_forward(x)
         x = self.norm2(x + self.dropout(ff_output))
         return x
     
 class Transformer(nn.Module):
-    def __init__(self, vocab_size, max_seq_length, d_model, num_heads, num_layers, d_ff, dropout, device):
+    def __init__(self, vocab_size, max_seq_length, d_model, num_heads, num_layers, d_ff, dropout, device, attention_type='flex'):
         super(Transformer, self).__init__()
 
         # Attach
         self.num_heads = num_heads  
         self.device = device
+        self.attention_type = attention_type
 
         # Initialize Layers
         self.embedding = nn.Embedding(vocab_size, d_model)
         self.positional_encoding = PositionalEncoding(d_model, max_seq_length)
         self.decoder_layers = nn.ModuleList([
-            DecoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)
+            DecoderLayer(d_model, num_heads, d_ff, dropout, attention_type=self.attention_type) for _ in range(num_layers)
         ])
         self.fc = nn.Linear(d_model, vocab_size)
         self.dropout = nn.Dropout(dropout)
         
     def forward(self, x, attention_mask):
-
         # Raise an error if the input tensor is not of the correct shape
         if x.ndim != 2:
             raise ValueError(f"Expected input tensor to have 2 dimensions, but got {x.ndim}. Expected shape: (batch_size, sequence_length)")
@@ -146,19 +175,22 @@ class Transformer(nn.Module):
         x = self.positional_encoding(x)
         x = self.dropout(x)
 
-        # Create a flex attention block mask based on this attention mask for this specific batch
-        block_mask = self.create_flex_block_mask(attention_mask)
-
+        if self.attention_type == 'flex':
+            # Create a flex attention block mask based on this attention mask
+            block_mask = self.create_flex_block_mask(attention_mask)
+        else:
+            block_mask = None  # Not used for scaled dot product attention
+        
         # Pass Through Each Decoder Layer
         for layer in self.decoder_layers:
-            x = layer(x, block_mask)
-
+            x = layer(x, block_mask=block_mask, attention_mask=attention_mask)
+            # Note: attention_mask is used only if attention_type is 'scaled_dot_product'
+        
         # Pass Through The Final Linear Layer
         output = self.fc(x)
 
         return output
-    
-
+        
     def create_flex_block_mask(self, attention_mask, block_size=128):
         """
         Creates a BlockMask for FlexAttention based on the provided attention mask.

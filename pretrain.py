@@ -28,7 +28,8 @@ NUM_EPOCHS = config.NUM_EPOCHS
 LEARNING_RATE = config.LEARNING_RATE
 
 # Initialize Model, Loss Function, and Optimizer
-model = Transformer(VOCAB_SIZE, MAX_TOKENS_PER_TASK, D_MODEL, NUM_HEADS, NUM_LAYERS, D_FF, DROPOUT, DEVICE)
+attention_type = 'flex'  # or 'scaled_dot_product'
+model = Transformer(VOCAB_SIZE, MAX_TOKENS_PER_TASK, D_MODEL, NUM_HEADS, NUM_LAYERS, D_FF, DROPOUT, DEVICE, attention_type=attention_type)
 model.to(DEVICE)
 criterion = nn.CrossEntropyLoss(ignore_index=Encoding.PAD.value)
 optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
@@ -93,16 +94,20 @@ for epoch in range(NUM_EPOCHS):
     model.eval()
     total_val_loss = 0
     with torch.no_grad():
-        for sequence, attention_mask in val_loader:
+        for sequence, attention_mask, start_of_test_output_grid in val_loader:
 
             # Move to device
             sequence = sequence.to(DEVICE)
             attention_mask = attention_mask.to(DEVICE)
+            start_of_test_output_grid = start_of_test_output_grid.to(DEVICE)
             
             # Prepare target input and output
-            decoder_input = sequence[:, :-1] # Decoder input should be shifted left relative to output
-            decoder_target = sequence[:, 1:] # Decoder output should be shifted right relative to input
+            decoder_input = sequence[:, :-1]  # Decoder input should be shifted left relative to output
+            decoder_target = sequence[:, 1:]  # Decoder output should be shifted right relative to input
 
+            # Prepare the attention mask
+            attention_mask = attention_mask[:, :-1, :-1]  # Adjust mask to match decoder input
+            
             # Forward pass
             decoder_output = model(decoder_input, attention_mask)
             
